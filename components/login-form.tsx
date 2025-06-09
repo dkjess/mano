@@ -39,7 +39,7 @@ export function LoginForm({
         password,
       });
       if (error) throw error;
-      router.push("/protected");
+      router.push("/people");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -57,7 +57,7 @@ export function LoginForm({
         provider: 'google',
         options: {
           scopes: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly',
-          redirectTo: `${window.location.origin}/`
+          redirectTo: `${window.location.origin}/people`
         }
       });
       if (error) throw error;
@@ -83,11 +83,11 @@ export function LoginForm({
               <Button 
                 type="button"
                 variant="outline" 
-                className="w-full" 
+                className="w-full font-medium-bold" 
                 onClick={handleGoogleLogin}
                 disabled={isGoogleLoading || isLoading}
               >
-                {isGoogleLoading ? "🤞 Signing in…" : "👋 Continue with Google"}
+                {isGoogleLoading ? "🤞 Signing you in..." : "👋 Continue with Google"}
               </Button>
               
               {/* Divider */}
@@ -111,6 +111,7 @@ export function LoginForm({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="font-sf"
                 />
               </div>
               <div className="grid gap-2">
@@ -129,11 +130,12 @@ export function LoginForm({
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  className="font-sf"
                 />
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
-                {isLoading ? "🤞 Logging in…" : "👋 Login"}
+              <Button type="submit" className="w-full font-medium-bold" disabled={isLoading || isGoogleLoading}>
+                {isLoading ? "🔍 Logging in..." : "👌 Login"}
               </Button>
             </div>
             <div className="mt-4 text-center text-sm">
