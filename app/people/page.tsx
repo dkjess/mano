@@ -1,0 +1,149 @@
+"use client";
+
+import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import Link from 'next/link';
+import type { Person } from '@/types/database';
+
+export default function PeoplePage() {
+  const [people, setPeople] = useState<Person[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    fetchPeople();
+  }, []);
+
+  const fetchPeople = async () => {
+    try {
+      const response = await fetch('/api/people');
+      const data = await response.json();
+      setPeople(data.people || []);
+    } catch (error) {
+      console.error('Error fetching people:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredPeople = people.filter(person =>
+    person.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (person.role && person.role.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  const getRelationshipEmoji = (relationshipType: string) => {
+    switch (relationshipType) {
+      case 'direct_report': return '👥';
+      case 'manager': return '👆';
+      case 'stakeholder': return '🤝';
+      case 'peer': return '👋';
+      default: return '🙋';
+    }
+  };
+
+  const getRelationshipLabel = (relationshipType: string) => {
+    switch (relationshipType) {
+      case 'direct_report': return 'Direct Report';
+      case 'manager': return 'Manager';
+      case 'stakeholder': return 'Stakeholder';
+      case 'peer': return 'Peer';
+      default: return relationshipType;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-64 font-sf">
+        <div className="text-center">
+          <div className="text-2xl mb-2">🤚</div>
+          <div className="text-gray-600 font-medium-bold">Loading your people...</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto p-6 font-sf">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-medium-bold text-gray-900">👋 Your People</h1>
+          <p className="text-gray-600 mt-2">Manage relationships with your team and stakeholders</p>
+        </div>
+        <Button asChild className="font-medium-bold">
+          <Link href="/people/new">🤲 Add Person</Link>
+        </Button>
+      </div>
+
+      {/* Search */}
+      <div className="mb-6">
+        <div className="relative">
+          <Input
+            type="text"
+            placeholder="🔍 Search people..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="font-sf"
+          />
+        </div>
+      </div>
+
+      {/* People List */}
+      {filteredPeople.length === 0 ? (
+        <div className="text-center py-12">
+          <div className="text-4xl mb-4">🤲</div>
+          <h3 className="text-lg font-medium-bold text-gray-900 mb-2">
+            {searchTerm ? 'No people found' : 'No people yet'}
+          </h3>
+          <p className="text-gray-600 mb-6">
+            {searchTerm 
+              ? 'Try adjusting your search terms' 
+              : 'Add your first team member or stakeholder to get started'}
+          </p>
+          {!searchTerm && (
+            <Button asChild>
+              <Link href="/people/new">🤲 Add Your First Person</Link>
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredPeople.map((person) => (
+            <Link 
+              key={person.id} 
+              href={`/people/${person.id}`}
+              className="block"
+            >
+              <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="text-2xl">
+                      {getRelationshipEmoji(person.relationship_type)}
+                    </div>
+                    <div>
+                      <div className="font-medium-bold text-gray-900">
+                        {person.name}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {person.role || 'No role specified'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500 mb-1">
+                      {getRelationshipLabel(person.relationship_type)}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      Added {new Date(person.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
