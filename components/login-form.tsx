@@ -54,7 +54,7 @@ export function LoginForm({
       
       console.log("Login successful, redirecting...");
       setDebugInfo("Login successful! Redirecting...");
-      router.push("/people");
+      router.push("/");
     } catch (error: unknown) {
       console.error("Login error:", error);
       const errorMessage = error instanceof Error ? error.message : "An error occurred";
@@ -75,8 +75,7 @@ export function LoginForm({
         provider: 'google',
         options: {
           scopes: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly',
-          // Remove the custom redirectTo for now
-          // redirectTo: `${window.location.origin}/people`
+          redirectTo: `${window.location.origin}/auth/callback`
         }
       });
       

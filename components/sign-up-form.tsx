@@ -57,7 +57,7 @@ export function SignUpForm({
         provider: 'google',
         options: {
           scopes: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly',
-          redirectTo: `${window.location.origin}/people`
+          redirectTo: `${window.location.origin}/auth/callback?redirect_to=/people`
         }
       });
       if (error) throw error;
