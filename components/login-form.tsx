@@ -25,6 +25,7 @@ export function LoginForm({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string>("");
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -32,16 +33,33 @@ export function LoginForm({
     const supabase = createClient();
     setIsLoading(true);
     setError(null);
+    setDebugInfo("Starting login...");
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log("Attempting login with email:", email);
+      setDebugInfo("Calling Supabase auth...");
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-      if (error) throw error;
+      
+      console.log("Auth response:", { data, error });
+      setDebugInfo(`Auth response: ${JSON.stringify({ data: !!data, error: error?.message })}`);
+      
+      if (error) {
+        console.error("Auth error:", error);
+        throw error;
+      }
+      
+      console.log("Login successful, redirecting...");
+      setDebugInfo("Login successful! Redirecting...");
       router.push("/people");
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      console.error("Login error:", error);
+      const errorMessage = error instanceof Error ? error.message : "An error occurred";
+      setError(errorMessage);
+      setDebugInfo(`Error: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -51,20 +69,31 @@ export function LoginForm({
     const supabase = createClient();
     setIsGoogleLoading(true);
     setError(null);
-
+  
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           scopes: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly',
-          redirectTo: `${window.location.origin}/people`
+          // Remove the custom redirectTo for now
+          // redirectTo: `${window.location.origin}/people`
         }
       });
+      
       if (error) throw error;
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
       setIsGoogleLoading(false);
     }
+  };
+
+  // Debug: Check current auth state
+  const checkAuthState = async () => {
+    const supabase = createClient();
+    const { data: { user }, error } = await supabase.auth.getUser();
+    console.log("Current user:", user);
+    console.log("Current session error:", error);
+    setDebugInfo(`Current user: ${user ? user.email : 'None'}`);
   };
 
   return (
@@ -77,6 +106,25 @@ export function LoginForm({
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Debug Info */}
+          {debugInfo && (
+            <div className="mb-4 p-2 bg-gray-100 rounded text-xs">
+              <strong>Debug:</strong> {debugInfo}
+            </div>
+          )}
+          
+          <div className="mb-4">
+            <Button 
+              type="button" 
+              variant="ghost" 
+              size="sm" 
+              onClick={checkAuthState}
+              className="text-xs"
+            >
+              Check Auth State
+            </Button>
+          </div>
+
           <form onSubmit={handleLogin}>
             <div className="flex flex-col gap-6">
               {/* Google OAuth Button */}
