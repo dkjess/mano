@@ -1,20 +1,30 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
+import { useRouter } from 'next/navigation';
 import type { Person } from '@/types/database';
 
 export default function PeoplePage() {
   const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [user, setUser] = useState<any>(null);
+  const router = useRouter();
 
   useEffect(() => {
+    checkUser();
     fetchPeople();
   }, []);
+
+  const checkUser = async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    setUser(user);
+  };
 
   const fetchPeople = async () => {
     try {
@@ -26,6 +36,12 @@ export default function PeoplePage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/');
   };
 
   const filteredPeople = people.filter(person =>
@@ -66,11 +82,48 @@ export default function PeoplePage() {
 
   return (
     <div className="max-w-4xl mx-auto p-6 font-sf">
+      {/* Header with user info and logout */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-medium-bold text-gray-900">👋 Your People</h1>
+          <h1 className="text-3xl font-medium-bold text-gray-900 flex items-center gap-2">
+            👋 Your People
+          </h1>
           <p className="text-gray-600 mt-2">Manage relationships with your team and stakeholders</p>
         </div>
+        <div className="flex items-center gap-4">
+          {user && (
+            <>
+              {user.user_metadata?.avatar_url && (
+                <img 
+                  src={user.user_metadata.avatar_url} 
+                  alt="Profile"
+                  className="w-8 h-8 rounded-full"
+                />
+              )}
+              <div className="text-right">
+                <div className="text-sm font-medium text-gray-900">
+                  {user.user_metadata?.full_name || user.email}
+                </div>
+                {user.user_metadata?.full_name && (
+                  <div className="text-xs text-gray-500">{user.email}</div>
+                )}
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleLogout}
+                className="font-medium-bold"
+              >
+                👋 Sign Out
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Add Person Button */}
+      <div className="flex justify-between items-center mb-6">
+        <div></div>
         <Button asChild className="font-medium-bold">
           <Link href="/people/new">🤲 Add Person</Link>
         </Button>
