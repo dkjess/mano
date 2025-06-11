@@ -14,7 +14,7 @@ create table people (
 -- Messages table
 create table messages (
   id uuid default gen_random_uuid() primary key,
-  person_id uuid references people(id) on delete cascade,
+  person_id text not null, -- Changed from uuid to text to allow 'general'
   content text not null,
   is_user boolean not null,
   created_at timestamp with time zone default timezone('utc'::text, now())
@@ -39,18 +39,21 @@ create policy "Users can delete their own people" on people
 
 create policy "Users can view messages for their people" on messages
   for select using (
+    person_id = 'general' OR
     exists (
       select 1 from people 
-      where people.id = messages.person_id 
+      where people.id::text = messages.person_id 
       and people.user_id = auth.uid()
     )
   );
 
 create policy "Users can insert messages for their people" on messages
   for insert with check (
+    person_id = 'general' OR
     exists (
       select 1 from people 
-      where people.id = messages.person_id 
+      where people.id::text = messages.person_id 
       and people.user_id = auth.uid()
     )
   );
+

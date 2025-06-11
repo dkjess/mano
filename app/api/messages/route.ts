@@ -18,6 +18,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'person_id is required' }, { status: 400 });
     }
 
+    // Handle special case for 'general' assistant
+    if (personId === 'general') {
+      // Get messages directly for general conversation
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('person_id', 'general')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      const messages = data || [];
+      
+      return NextResponse.json({ messages });
+    }
+
     const messages = await getMessages(personId, supabase);
     return NextResponse.json({ messages });
   } catch (error) {
@@ -40,6 +55,23 @@ export async function POST(request: NextRequest) {
 
     if (!person_id || !content || typeof is_user !== 'boolean') {
       return NextResponse.json({ error: 'person_id, content, and is_user are required' }, { status: 400 });
+    }
+
+    // Handle special case for 'general' assistant
+    if (person_id === 'general') {
+      // Create message directly for general conversation
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          person_id: 'general',
+          content,
+          is_user
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return NextResponse.json({ message: data }, { status: 201 });
     }
 
     const message = await createMessage({

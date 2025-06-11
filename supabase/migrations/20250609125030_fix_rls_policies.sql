@@ -17,24 +17,46 @@ CREATE POLICY "Users can update their own people" ON people
 CREATE POLICY "Users can delete their own people" ON people
   FOR DELETE USING (auth.uid() = user_id);
 
--- Same for messages
+-- Same for messages but with support for 'general' assistant
 DROP POLICY IF EXISTS "Users can view messages for their people" ON messages;
 DROP POLICY IF EXISTS "Users can insert messages for their people" ON messages;
 
 CREATE POLICY "Users can view messages for their people" ON messages
   FOR SELECT USING (
+    person_id = 'general' OR
     EXISTS (
       SELECT 1 FROM people 
-      WHERE people.id = messages.person_id 
+      WHERE people.id::text = messages.person_id 
       AND people.user_id = auth.uid()
     )
   );
 
 CREATE POLICY "Users can insert messages for their people" ON messages
   FOR INSERT WITH CHECK (
+    person_id = 'general' OR
     EXISTS (
       SELECT 1 FROM people 
-      WHERE people.id = messages.person_id 
+      WHERE people.id::text = messages.person_id 
+      AND people.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update messages for their people" ON messages
+  FOR UPDATE USING (
+    person_id = 'general' OR
+    EXISTS (
+      SELECT 1 FROM people 
+      WHERE people.id::text = messages.person_id 
+      AND people.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can delete messages for their people" ON messages
+  FOR DELETE USING (
+    person_id = 'general' OR
+    EXISTS (
+      SELECT 1 FROM people 
+      WHERE people.id::text = messages.person_id 
       AND people.user_id = auth.uid()
     )
   );

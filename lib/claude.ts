@@ -26,6 +26,21 @@ Previous conversation history:
 
 Respond in a helpful, professional tone. Focus on actionable advice and insights that will help the manager build better relationships with their team. Use hand emojis occasionally to reinforce the "helping hand" theme, but don't overdo it.`;
 
+export const GENERAL_SYSTEM_PROMPT = `You are Mano, an intelligent management assistant for strategic thinking and general management challenges. Help with:
+
+Hiring decisions and team building
+Communication strategies and stakeholder management
+Process improvements and organizational challenges
+Strategic planning and prioritization
+Leadership development and management skills
+
+Provide practical, actionable advice for management situations that aren't specific to individual team members. Be conversational but professional, and ask clarifying questions when helpful.
+
+Previous conversation history:
+{conversation_history}
+
+Respond in a helpful, professional tone. Focus on strategic management guidance and general leadership advice. Use hand emojis occasionally to reinforce the "helping hand" theme, but don't overdo it.`;
+
 async function callClaudeWithRetry(
  systemPrompt: string,
  userMessage: string,
@@ -86,12 +101,20 @@ export async function getChatCompletion(
    .map(msg => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
    .join('\n');
 
- // Replace placeholders in system prompt
- const systemPrompt = SYSTEM_PROMPT
-   .replace('{name}', personName)
-   .replace('{role}', personRole || 'No specific role')
-   .replace('{relationship_type}', relationshipType)
-   .replace('{conversation_history}', historyText || 'No previous conversation');
+ let systemPrompt: string;
+ 
+ // Use different system prompt for general assistant
+ if (personName === 'general') {
+   systemPrompt = GENERAL_SYSTEM_PROMPT
+     .replace('{conversation_history}', historyText || 'No previous conversation');
+ } else {
+   // Replace placeholders in person-specific system prompt
+   systemPrompt = SYSTEM_PROMPT
+     .replace('{name}', personName)
+     .replace('{role}', personRole || 'No specific role')
+     .replace('{relationship_type}', relationshipType)
+     .replace('{conversation_history}', historyText || 'No previous conversation');
+ }
 
  return await callClaudeWithRetry(systemPrompt, userMessage);
 }
@@ -108,11 +131,19 @@ export async function getChatCompletionStreaming(
    .map(msg => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
    .join('\n');
 
- const systemPrompt = SYSTEM_PROMPT
-   .replace('{name}', personName)
-   .replace('{role}', personRole || 'No specific role')
-   .replace('{relationship_type}', relationshipType)
-   .replace('{conversation_history}', historyText || 'No previous conversation');
+ let systemPrompt: string;
+ 
+ // Use different system prompt for general assistant
+ if (personName === 'general') {
+   systemPrompt = GENERAL_SYSTEM_PROMPT
+     .replace('{conversation_history}', historyText || 'No previous conversation');
+ } else {
+   systemPrompt = SYSTEM_PROMPT
+     .replace('{name}', personName)
+     .replace('{role}', personRole || 'No specific role')
+     .replace('{relationship_type}', relationshipType)
+     .replace('{conversation_history}', historyText || 'No previous conversation');
+ }
 
  return anthropic.messages.stream({
    model: 'claude-sonnet-4-20250514',

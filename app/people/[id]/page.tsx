@@ -1,12 +1,18 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Person, Message } from '@/types/database';
+
+interface StagedFile {
+  file: File;
+  content: string;
+  id: string;
+}
 
 export default function PersonDetailPage() {
   const params = useParams();
@@ -19,6 +25,9 @@ export default function PersonDetailPage() {
   const [sending, setSending] = useState(false);
   const [retryData, setRetryData] = useState<{message: string, shouldShow: boolean} | null>(null);
   const [showMarkdownHelp, setShowMarkdownHelp] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
+  const [processingFile, setProcessingFile] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,7 +36,7 @@ export default function PersonDetailPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, sending]); // Also scroll when sending state changes
+  }, [messages, sending]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -35,22 +44,45 @@ export default function PersonDetailPage() {
 
   const fetchPersonAndMessages = async () => {
     try {
-      // Fetch person details
-      const peopleResponse = await fetch('/api/people');
-      const peopleData = await peopleResponse.json();
-      const foundPerson = peopleData.people?.find((p: Person) => p.id === personId);
-      
-      if (!foundPerson) {
-        console.error('Person not found');
-        return;
-      }
-      
-      setPerson(foundPerson);
+      // Handle special case for 'general' assistant
+      if (personId === 'general') {
+        setPerson({
+          id: 'general',
+          user_id: '', // Not needed for general
+          name: 'General',
+          role: 'Management Assistant',
+          relationship_type: 'assistant',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
 
-      // Fetch messages
-      const messagesResponse = await fetch(`/api/messages?person_id=${personId}`);
-      const messagesData = await messagesResponse.json();
-      setMessages(messagesData.messages || []);
+        // Fetch messages for general conversation
+        const messagesResponse = await fetch(`/api/messages?person_id=general`);
+        if (!messagesResponse.ok) {
+          console.error('Failed to fetch general messages:', messagesResponse.status);
+          setMessages([]);
+        } else {
+          const messagesData = await messagesResponse.json();
+          setMessages(messagesData.messages || []);
+        }
+      } else {
+        // Fetch person details
+        const peopleResponse = await fetch('/api/people');
+        const peopleData = await peopleResponse.json();
+        const foundPerson = peopleData.people?.find((p: Person) => p.id === personId);
+        
+        if (!foundPerson) {
+          console.error('Person not found');
+          return;
+        }
+        
+        setPerson(foundPerson);
+
+        // Fetch messages
+        const messagesResponse = await fetch(`/api/messages?person_id=${personId}`);
+        const messagesData = await messagesResponse.json();
+        setMessages(messagesData.messages || []);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -61,7 +93,11 @@ export default function PersonDetailPage() {
   const sendMessage = async (e: React.FormEvent, retryMessage?: string) => {
     e.preventDefault();
     const messageText = retryMessage || newMessage.trim();
-    if (!messageText || sending) return;
+    
+    // Don't send if no message and no files
+    if (!messageText && stagedFiles.length === 0) return;
+    
+    if (sending) return;
 
     setSending(true);
     if (!retryMessage) {
@@ -70,25 +106,39 @@ export default function PersonDetailPage() {
     setRetryData(null);
 
     try {
+      // Combine message with file contents
+      let combinedMessage = messageText;
+      
+      if (stagedFiles.length > 0) {
+        const fileContents = stagedFiles.map(staged => 
+          `📎 **${staged.file.name}** (${(staged.file.size / 1024).toFixed(1)}KB)\n\n${staged.content}`
+        ).join('\n\n---\n\n');
+        
+        combinedMessage = messageText 
+          ? `${messageText}\n\n${fileContents}`
+          : fileContents;
+      }
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           person_id: personId,
-          message: messageText
+          message: combinedMessage
         })
       });
 
       const data = await response.json();
       
       if (response.ok) {
-        // Add both user and assistant messages
         setMessages(prev => [...prev, data.userMessage, data.assistantMessage]);
         
-        // Show retry option if Claude had an error
+        // Clear staged files after successful send
+        setStagedFiles([]);
+        
         if (data.shouldRetry) {
           setRetryData({
-            message: messageText,
+            message: combinedMessage,
             shouldShow: true
           });
         }
@@ -101,6 +151,141 @@ export default function PersonDetailPage() {
       setSending(false);
     }
   };
+
+  const processFile = async (file: File): Promise<string> => {
+    const fileName = file.name.toLowerCase();
+    
+    // Text-based formats we can read directly
+    if (file.type === 'text/plain' || 
+        fileName.endsWith('.txt') || 
+        fileName.endsWith('.md') || 
+        fileName.endsWith('.vtt') ||
+        fileName.endsWith('.srt') ||
+        fileName.endsWith('.sbv') ||
+        fileName.endsWith('.ass') ||
+        fileName.endsWith('.ssa') ||
+        fileName.endsWith('.ttml') ||
+        fileName.endsWith('.csv')) {
+      return await file.text();
+    }
+    
+    // For other formats, return a placeholder
+    return `[File: ${file.name} - Content will be processed when sent]`;
+  };
+
+  const handleFileUpload = async (files: FileList) => {
+    if (!files.length) return;
+    
+    const file = files[0];
+    
+    // Extended list of supported transcript and document formats
+    const allowedTypes = [
+      'text/plain', 
+      'text/csv', 
+      'text/markdown',
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'application/msword', // .doc
+    ];
+    
+    const allowedExtensions = [
+      '.txt', '.md', '.pdf', '.csv', '.docx', '.doc',
+      // Transcript formats
+      '.vtt', '.srt', '.sbv', '.ass', '.ssa', '.ttml',
+      // Other text formats
+      '.log', '.json', '.xml'
+    ];
+    
+    const isValidType = allowedTypes.includes(file.type) || 
+                       allowedExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+    
+    if (!isValidType) {
+      alert('📄 Please upload a supported file format (.txt, .vtt, .srt, .md, .pdf, .csv, .docx, etc.)');
+      return;
+    }
+    
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      alert('📏 File too large. Please keep files under 10MB.');
+      return;
+    }
+
+    setProcessingFile(true);
+    
+    try {
+      const content = await processFile(file);
+      const staged: StagedFile = {
+        file,
+        content,
+        id: Date.now().toString()
+      };
+      
+      setStagedFiles(prev => [...prev, staged]);
+      
+    } catch (error) {
+      console.error('Error processing file:', error);
+      alert('❌ Error processing file. Please try again.');
+    } finally {
+      setProcessingFile(false);
+    }
+  };
+
+  const removeFile = (fileId: string) => {
+    setStagedFiles(prev => prev.filter(f => f.id !== fileId));
+  };
+
+  const getFileIcon = (fileName: string) => {
+    const ext = fileName.toLowerCase().split('.').pop();
+    switch (ext) {
+      case 'vtt':
+      case 'srt':
+      case 'sbv':
+      case 'ass':
+      case 'ssa':
+      case 'ttml':
+        return '🎬';
+      case 'pdf':
+        return '📄';
+      case 'doc':
+      case 'docx':
+        return '📝';
+      case 'csv':
+        return '📊';
+      case 'md':
+        return '📋';
+      case 'json':
+        return '🔧';
+      case 'xml':
+        return '🏷️';
+      default:
+        return '📎';
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileUpload(files);
+    }
+  }, []);
 
   const insertMarkdown = (syntax: string, cursorOffset: number = 0) => {
     const textarea = document.querySelector('textarea') as HTMLTextAreaElement;
@@ -124,7 +309,6 @@ export default function PersonDetailPage() {
     const newText = newMessage.substring(0, start) + replacement + newMessage.substring(end);
     setNewMessage(newText);
 
-    // Focus and set cursor position
     setTimeout(() => {
       textarea.focus();
       const newCursorPos = start + replacement.length - cursorOffset;
@@ -138,6 +322,7 @@ export default function PersonDetailPage() {
       case 'manager': return '👆';
       case 'stakeholder': return '🤝';
       case 'peer': return '👋';
+      case 'assistant': return '🧠';
       default: return '🙋';
     }
   };
@@ -148,11 +333,11 @@ export default function PersonDetailPage() {
       case 'manager': return 'Manager';
       case 'stakeholder': return 'Stakeholder';
       case 'peer': return 'Peer';
+      case 'assistant': return 'Management Assistant';
       default: return relationshipType;
     }
   };
 
-  // Loading component for Mano's response
   const ManoLoadingMessage = () => (
     <div className="flex justify-start">
       <div className="max-w-xs lg:max-w-md px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-900">
@@ -195,7 +380,40 @@ export default function PersonDetailPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto h-screen flex flex-col font-sf">
+    <div 
+      className="max-w-4xl mx-auto h-screen flex flex-col font-sf relative"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-blue-500/20 border-4 border-dashed border-blue-500 z-50 flex items-center justify-center">
+          <div className="text-center bg-white p-8 rounded-lg shadow-lg">
+            <div className="text-4xl mb-4">📎</div>
+            <h3 className="text-xl font-medium-bold text-gray-900 mb-2">
+              Drop your file here
+            </h3>
+            <p className="text-gray-600">
+              Upload meeting transcripts, notes, or documents about {person.name}
+            </p>
+            <p className="text-sm text-gray-500 mt-2">
+              Supports: .txt, .vtt, .srt, .md, .pdf, .csv, .docx, .json (max 10MB)
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Processing file overlay */}
+      {processingFile && (
+        <div className="absolute inset-0 bg-black/20 z-40 flex items-center justify-center">
+          <div className="text-center bg-white p-6 rounded-lg shadow-lg">
+            <div className="text-2xl mb-2">📄</div>
+            <div className="text-gray-600 font-medium-bold">Processing file...</div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white border-b border-gray-200 p-4">
         <div className="flex items-center justify-between">
@@ -227,7 +445,10 @@ export default function PersonDetailPage() {
               📝 Markdown
             </Button>
             <div className="text-xs text-gray-400">
-              Last contact: {messages.length > 0 ? new Date(messages[messages.length - 1].created_at).toLocaleDateString() : 'Never'}
+              {personId === 'general' 
+                ? 'Always available' 
+                : `Last contact: ${messages.length > 0 ? new Date(messages[messages.length - 1].created_at).toLocaleDateString() : 'Never'}`
+              }
             </div>
           </div>
         </div>
@@ -255,10 +476,10 @@ export default function PersonDetailPage() {
               <div>`code` → <code className="bg-blue-100 px-1 rounded">code</code></div>
             </div>
             <div>
-              <div className="font-medium mb-1">Structure:</div>
-              <div>- list item</div>
-              <div>```code block```</div>
-              <div># heading</div>
+              <div className="font-medium mb-1">Files & Structure:</div>
+              <div>📎 Drag files to stage them</div>
+              <div>🎬 .vtt, .srt transcripts</div>
+              <div>- list item, ```code block```</div>
             </div>
           </div>
           <div className="mt-2 flex space-x-2">
@@ -274,6 +495,45 @@ export default function PersonDetailPage() {
             <Button size="sm" variant="outline" onClick={() => insertMarkdown('```code```', 4)}>
               💻
             </Button>
+            <label className="inline-block">
+              <Button size="sm" variant="outline" asChild>
+                <span>📎 Upload</span>
+              </Button>
+              <input
+                type="file"
+                className="hidden"
+                accept=".txt,.md,.pdf,.csv,.docx,.doc,.vtt,.srt,.sbv,.ass,.ssa,.ttml,.log,.json,.xml"
+                onChange={(e) => e.target.files && handleFileUpload(e.target.files)}
+              />
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* Staged Files */}
+      {stagedFiles.length > 0 && (
+        <div className="bg-amber-50 border-b border-amber-200 p-3">
+          <div className="text-sm font-medium text-amber-900 mb-2">📎 Files ready to send:</div>
+          <div className="flex flex-wrap gap-2">
+            {stagedFiles.map((staged) => (
+              <div key={staged.id} className="flex items-center space-x-2 bg-white px-3 py-2 rounded-lg shadow-sm">
+                <span className="text-lg">{getFileIcon(staged.file.name)}</span>
+                <span className="text-sm font-medium text-gray-700">
+                  {staged.file.name}
+                </span>
+                <span className="text-xs text-gray-500">
+                  ({(staged.file.size / 1024).toFixed(1)}KB)
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => removeFile(staged.id)}
+                  className="h-5 w-5 p-0 text-gray-400 hover:text-red-500"
+                >
+                  ✕
+                </Button>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -284,13 +544,19 @@ export default function PersonDetailPage() {
           <div className="text-center py-12">
             <div className="text-4xl mb-4">👋</div>
             <h3 className="text-lg font-medium-bold text-gray-900 mb-2">
-              Start a conversation about {person.name}
+              {personId === 'general' 
+                ? 'Start a conversation about management' 
+                : `Start a conversation about ${person.name}`
+              }
             </h3>
             <p className="text-gray-600">
-              Ask me anything about managing your relationship with {person.name}
+              {personId === 'general'
+                ? 'Ask me about strategic thinking, team building, communication strategies, and general management challenges'
+                : `Ask me anything about managing your relationship with ${person.name}`
+              }
             </p>
             <p className="text-sm text-gray-500 mt-2">
-              💡 Tip: You can use **markdown** formatting in your messages
+              💡 Tip: {personId === 'general' ? 'Ask about hiring, stakeholder management, or process improvements' : 'Drag & drop transcripts, use **markdown**, and add context'}
             </p>
           </div>
         ) : (
@@ -303,40 +569,37 @@ export default function PersonDetailPage() {
                 <div
                   className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                     message.is_user
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-stone-100 text-gray-900'
                       : 'bg-white border border-gray-200 text-gray-900'
                   }`}
                 >
                   <div className="text-sm font-medium mb-1">
                     {message.is_user ? 'You' : '🤚 Mano'}
                   </div>
-                  <div className={`prose prose-sm max-w-none ${
-                    message.is_user 
-                      ? 'prose-user-message' 
-                      : ''
-                  }`}>
+                  <div className={`prose prose-sm max-w-none`}>
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        code({node, inline, className, children, ...props}) {
+                        code({children, ...props}) {
+                          const { inline, ...restProps } = props as any;
                           return inline ? (
                             <code
                               className={`px-1 py-0.5 rounded text-sm font-medium ${
                                 message.is_user 
-                                  ? 'bg-blue-500/20 text-blue-200' 
+                                  ? 'bg-stone-200 text-stone-800' 
                                   : 'bg-gray-100 text-gray-800'
                               }`}
-                              {...props}
+                              {...restProps}
                             >
                               {children}
                             </code>
                           ) : (
                             <pre className={`p-2 rounded text-sm overflow-x-auto ${
                               message.is_user 
-                                ? 'bg-blue-500/20 text-blue-200' 
+                                ? 'bg-stone-200 text-stone-800' 
                                 : 'bg-gray-100 text-gray-800'
                             }`}>
-                              <code {...props}>{children}</code>
+                              <code {...restProps}>{children}</code>
                             </pre>
                           );
                         },
@@ -348,7 +611,7 @@ export default function PersonDetailPage() {
                               rel="noopener noreferrer"
                               className={`underline hover:no-underline ${
                                 message.is_user 
-                                  ? 'text-blue-200 hover:text-blue-100' 
+                                  ? 'text-stone-700 hover:text-stone-600' 
                                   : 'text-blue-600 hover:text-blue-500'
                               }`}
                             >
@@ -362,7 +625,7 @@ export default function PersonDetailPage() {
                     </ReactMarkdown>
                   </div>
                   <div className={`text-xs mt-1 ${
-                    message.is_user ? 'text-blue-100' : 'text-gray-500'
+                    message.is_user ? 'text-stone-500' : 'text-gray-500'
                   }`}>
                     {new Date(message.created_at).toLocaleTimeString([], { 
                       hour: '2-digit', 
@@ -373,7 +636,6 @@ export default function PersonDetailPage() {
               </div>
             ))}
             
-            {/* Loading state when sending */}
             {sending && <ManoLoadingMessage />}
           </>
         )}
@@ -414,7 +676,10 @@ export default function PersonDetailPage() {
             <textarea
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder={`Ask about ${person.name} or add a note... (supports **markdown**)`}
+              placeholder={personId === 'general' 
+                ? `Ask about management strategies${stagedFiles.length > 0 ? ` (${stagedFiles.length} file${stagedFiles.length > 1 ? 's' : ''} ready)` : ''} ...`
+                : `Ask about ${person.name}${stagedFiles.length > 0 ? ` (${stagedFiles.length} file${stagedFiles.length > 1 ? 's' : ''} ready)` : ' or drop files'} ...`
+              }
               disabled={sending}
               className="w-full min-h-[44px] max-h-32 px-3 py-2 border border-gray-300 rounded-md resize-none font-sf focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
               style={{
@@ -436,8 +701,12 @@ export default function PersonDetailPage() {
               rows={1}
             />
           </div>
-          <Button type="submit" disabled={sending || !newMessage.trim()} className="mb-0">
-            {sending ? '🤞' : '👍'}
+          <Button 
+            type="submit" 
+            disabled={sending || (!newMessage.trim() && stagedFiles.length === 0)} 
+            className="mb-0"
+          >
+            {sending ? '🤞' : stagedFiles.length > 0 ? '📎' : '👍'}
           </Button>
         </form>
         {sending && (

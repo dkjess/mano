@@ -143,7 +143,7 @@ export default function PeoplePage() {
       </div>
 
       {/* People List */}
-      {filteredPeople.length === 0 ? (
+      {filteredPeople.length === 0 && !searchTerm ? (
         <div className="text-center py-12">
           <div className="text-4xl mb-4">🤲</div>
           <h3 className="text-lg font-medium-bold text-gray-900 mb-2">
@@ -162,6 +162,62 @@ export default function PeoplePage() {
         </div>
       ) : (
         <div className="space-y-3">
+          {/* General Management Assistant - Always show at top when not searching */}
+          {!searchTerm && (
+            <>
+              <Link href="/people/general" className="block">
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 shadow-sm border-2 border-blue-200 hover:shadow-md hover:border-blue-300 transition-all">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="text-2xl">
+                        🧠
+                      </div>
+                      <div>
+                        <div className="font-medium-bold text-gray-900">
+                          General
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Strategic management advice and general guidance
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-blue-600 mb-1">
+                        Management Assistant
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        Always available
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+              
+              {/* Separator line */}
+              {filteredPeople.length > 0 && (
+                <div className="flex items-center py-2">
+                  <div className="flex-1 border-t border-gray-200"></div>
+                  <div className="px-4 text-xs text-gray-500 font-medium">Your Team</div>
+                  <div className="flex-1 border-t border-gray-200"></div>
+                </div>
+              )}
+            </>
+          )}
+          
+          {/* Show message when no people but has search term */}
+          {filteredPeople.length === 0 && searchTerm && (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4">🔍</div>
+              <h3 className="text-lg font-medium-bold text-gray-900 mb-2">
+                No people found
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Try adjusting your search terms
+              </p>
+            </div>
+          )}
+          
+          {/* Regular people list */}
           {filteredPeople.map((person) => (
             <Link 
               key={person.id} 

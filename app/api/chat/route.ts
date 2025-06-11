@@ -19,16 +19,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'person_id and message are required' }, { status: 400 });
     }
 
-    // Get person details
-    const { data: person, error: personError } = await supabase
-      .from('people')
-      .select('*')
-      .eq('id', person_id)
-      .eq('user_id', user.id)
-      .single();
+    // Handle special case for 'general' assistant
+    let person;
+    if (person_id === 'general') {
+      person = {
+        id: 'general',
+        name: 'general',
+        role: 'Management Assistant',
+        relationship_type: 'assistant'
+      };
+    } else {
+      // Get person details
+      const { data: personData, error: personError } = await supabase
+        .from('people')
+        .select('*')
+        .eq('id', person_id)
+        .eq('user_id', user.id)
+        .single();
 
-    if (personError || !person) {
-      return NextResponse.json({ error: 'Person not found' }, { status: 404 });
+      if (personError || !personData) {
+        return NextResponse.json({ error: 'Person not found' }, { status: 404 });
+      }
+      
+      person = personData;
     }
 
     // Get conversation history

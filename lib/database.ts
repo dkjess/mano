@@ -65,12 +65,32 @@ export async function getMessages(personId: string, supabase: SupabaseClient): P
 }
 
 export async function createMessage(
-  message: Omit<Message, 'id' | 'created_at'>,
+  messageData: {
+    person_id: string;
+    content: string;
+    is_user: boolean;
+  },
   supabase: SupabaseClient
 ): Promise<Message> {
+  // Handle special case for 'general' assistant
+  if (messageData.person_id === 'general') {
+    const { data, error } = await supabase
+      .from('messages')  
+      .insert({
+        person_id: 'general',
+        content: messageData.content,
+        is_user: messageData.is_user
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   const { data, error } = await supabase
     .from('messages')
-    .insert([message])
+    .insert(messageData)
     .select()
     .single();
 
