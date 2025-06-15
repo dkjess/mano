@@ -119,7 +119,8 @@ export default function PersonDetailPage() {
           : fileContents;
       }
 
-      const response = await fetch('/api/chat', {
+      // Use streaming endpoint for better user experience
+      const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -128,25 +129,168 @@ export default function PersonDetailPage() {
         })
       });
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
       
-      if (response.ok) {
-        setMessages(prev => [...prev, data.userMessage, data.assistantMessage]);
+      if (!reader) {
+        throw new Error('No response body reader available');
+      }
+
+      let userMessage: Message | null = null;
+      let assistantMessage: Message | null = null;
+      let streamingContent = '';
+      let shouldRetry = false;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) break;
+          
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                switch (data.type) {
+                  case 'start':
+                    // Create user message and placeholder assistant message
+                    userMessage = {
+                      id: data.userMessageId,
+                      person_id: personId,
+                      content: combinedMessage,
+                      is_user: true,
+                      created_at: new Date().toISOString()
+                    };
+                    
+                    assistantMessage = {
+                      id: 'streaming',
+                      person_id: personId,
+                      content: '',
+                      is_user: false,
+                      created_at: new Date().toISOString()
+                    };
+                    
+                    setMessages(prev => [...prev, userMessage!, assistantMessage!]);
+                    break;
+                    
+                  case 'delta':
+                    // Update streaming content
+                    streamingContent += data.text;
+                    setMessages(prev => 
+                      prev.map(msg => 
+                        msg.id === 'streaming' 
+                          ? { ...msg, content: streamingContent }
+                          : msg
+                      )
+                    );
+                    break;
+                    
+                  case 'complete':
+                    // Replace streaming message with final message
+                    const finalMessage: Message = {
+                      id: data.assistantMessageId,
+                      person_id: personId,
+                      content: data.fullResponse,
+                      is_user: false,
+                      created_at: new Date().toISOString()
+                    };
+                    
+                    setMessages(prev => 
+                      prev.map(msg => 
+                        msg.id === 'streaming' ? finalMessage : msg
+                      )
+                    );
+                    break;
+                    
+                  case 'error':
+                    // Handle error case
+                    const errorMessage: Message = {
+                      id: data.assistantMessageId,
+                      person_id: personId,
+                      content: data.error,
+                      is_user: false,
+                      created_at: new Date().toISOString()
+                    };
+                    
+                    setMessages(prev => 
+                      prev.map(msg => 
+                        msg.id === 'streaming' ? errorMessage : msg
+                      )
+                    );
+                    
+                    shouldRetry = data.shouldRetry;
+                    break;
+                }
+              } catch (parseError) {
+                console.error('Error parsing streaming data:', parseError);
+              }
+            }
+          }
+        }
         
         // Clear staged files after successful send
         setStagedFiles([]);
         
-        if (data.shouldRetry) {
+        if (shouldRetry) {
           setRetryData({
             message: combinedMessage,
             shouldShow: true
           });
         }
-      } else {
-        console.error('Error sending message:', data.error);
+        
+      } finally {
+        reader.releaseLock();
       }
+      
     } catch (error) {
       console.error('Error sending message:', error);
+      
+             // Fallback to non-streaming API
+       try {
+         let fallbackMessage = messageText;
+         if (stagedFiles.length > 0) {
+           const fileContents = stagedFiles.map(staged => 
+             `📎 **${staged.file.name}** (${(staged.file.size / 1024).toFixed(1)}KB)\n\n${staged.content}`
+           ).join('\n\n---\n\n');
+           
+           fallbackMessage = messageText 
+             ? `${messageText}\n\n${fileContents}`
+             : fileContents;
+         }
+         
+         const fallbackResponse = await fetch('/api/chat', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({
+             person_id: personId,
+             message: fallbackMessage
+           })
+         });
+
+         const data = await fallbackResponse.json();
+         
+         if (fallbackResponse.ok) {
+           setMessages(prev => [...prev, data.userMessage, data.assistantMessage]);
+           setStagedFiles([]);
+           
+           if (data.shouldRetry) {
+             setRetryData({
+               message: fallbackMessage,
+               shouldShow: true
+             });
+           }
+         }
+       } catch (fallbackError) {
+         console.error('Fallback API also failed:', fallbackError);
+       }
     } finally {
       setSending(false);
     }
@@ -346,11 +490,11 @@ export default function PersonDetailPage() {
         </div>
         <div className="flex items-center space-x-2">
           <div className="flex space-x-1">
-            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
           </div>
-          <span className="text-sm text-gray-500">thinking...</span>
+          <span className="text-sm text-gray-500">gathering context & thinking...</span>
         </div>
       </div>
     </div>

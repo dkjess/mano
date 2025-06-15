@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Message } from '@/types/database';
+import type { ManagementContextData } from './management-context';
+import { formatContextForPrompt } from './management-context';
 
 const anthropic = new Anthropic({
  apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -21,10 +23,12 @@ Name: {name}
 Role: {role}
 Relationship: {relationship_type}
 
+{management_context}
+
 Previous conversation history:
 {conversation_history}
 
-Respond in a helpful, professional tone. Focus on actionable advice and insights that will help the manager build better relationships with their team. Use hand emojis occasionally to reinforce the "helping hand" theme, but don't overdo it.`;
+Respond in a helpful, professional tone. Focus on actionable advice and insights that will help the manager build better relationships with their team. When relevant team context adds value, reference it naturally in your response. Use hand emojis occasionally to reinforce the "helping hand" theme, but don't overdo it.`;
 
 export const GENERAL_SYSTEM_PROMPT = `You are Mano, an intelligent management assistant for strategic thinking and general management challenges. Help with:
 
@@ -34,12 +38,12 @@ Process improvements and organizational challenges
 Strategic planning and prioritization
 Leadership development and management skills
 
-Provide practical, actionable advice for management situations that aren't specific to individual team members. Be conversational but professional, and ask clarifying questions when helpful.
+{management_context}
 
 Previous conversation history:
 {conversation_history}
 
-Respond in a helpful, professional tone. Focus on strategic management guidance and general leadership advice. Use hand emojis occasionally to reinforce the "helping hand" theme, but don't overdo it.`;
+Provide practical, actionable advice for management situations that aren't specific to individual team members. Be conversational but professional, and ask clarifying questions when helpful. When your awareness of the manager's team context can inform better advice, reference it naturally. Use hand emojis occasionally to reinforce the "helping hand" theme, but don't overdo it.`;
 
 async function callClaudeWithRetry(
  systemPrompt: string,
@@ -93,7 +97,8 @@ export async function getChatCompletion(
  personName: string,
  personRole: string | null,
  relationshipType: string,
- conversationHistory: Message[]
+ conversationHistory: Message[],
+ managementContext?: ManagementContextData
 ): Promise<string> {
  // Format conversation history
  const historyText = conversationHistory
@@ -101,11 +106,15 @@ export async function getChatCompletion(
    .map(msg => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
    .join('\n');
 
+ // Format management context if available
+ const contextText = managementContext ? formatContextForPrompt(managementContext) : '';
+
  let systemPrompt: string;
  
  // Use different system prompt for general assistant
  if (personName === 'general') {
    systemPrompt = GENERAL_SYSTEM_PROMPT
+     .replace('{management_context}', contextText || 'No additional team context available.')
      .replace('{conversation_history}', historyText || 'No previous conversation');
  } else {
    // Replace placeholders in person-specific system prompt
@@ -113,6 +122,7 @@ export async function getChatCompletion(
      .replace('{name}', personName)
      .replace('{role}', personRole || 'No specific role')
      .replace('{relationship_type}', relationshipType)
+     .replace('{management_context}', contextText || 'No additional team context available.')
      .replace('{conversation_history}', historyText || 'No previous conversation');
  }
 
@@ -124,24 +134,30 @@ export async function getChatCompletionStreaming(
  personName: string,
  personRole: string | null,
  relationshipType: string,
- conversationHistory: Message[]
+ conversationHistory: Message[],
+ managementContext?: ManagementContextData
 ) {
  const historyText = conversationHistory
    .slice(-10)
    .map(msg => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
    .join('\n');
 
+ // Format management context if available
+ const contextText = managementContext ? formatContextForPrompt(managementContext) : '';
+
  let systemPrompt: string;
  
  // Use different system prompt for general assistant
  if (personName === 'general') {
    systemPrompt = GENERAL_SYSTEM_PROMPT
+     .replace('{management_context}', contextText || 'No additional team context available.')
      .replace('{conversation_history}', historyText || 'No previous conversation');
  } else {
    systemPrompt = SYSTEM_PROMPT
      .replace('{name}', personName)
      .replace('{role}', personRole || 'No specific role')
      .replace('{relationship_type}', relationshipType)
+     .replace('{management_context}', contextText || 'No additional team context available.')
      .replace('{conversation_history}', historyText || 'No previous conversation');
  }
 

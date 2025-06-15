@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getMessages, createMessage } from '@/lib/database';
 import { getChatCompletion } from '@/lib/claude';
+import { gatherManagementContext } from '@/lib/management-context';
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,6 +48,16 @@ export async function POST(request: NextRequest) {
     // Get conversation history
     const conversationHistory = await getMessages(person_id, supabase);
 
+    // Gather management context for "one brain" awareness
+    let managementContext;
+    try {
+      managementContext = await gatherManagementContext(user.id, person_id, supabase);
+    } catch (contextError) {
+      console.warn('Failed to gather management context, proceeding without it:', contextError);
+      // Continue without context - graceful degradation
+      managementContext = undefined;
+    }
+
     // Save user message first
     const userMessageRecord = await createMessage({
       person_id,
@@ -55,13 +66,14 @@ export async function POST(request: NextRequest) {
     }, supabase);
 
     try {
-      // Get Claude's response
+      // Get Claude's response with management context
       const claudeResponse = await getChatCompletion(
         userMessage,
         person.name,
         person.role,
         person.relationship_type,
-        conversationHistory
+        conversationHistory,
+        managementContext // Pass the management context to Claude
       );
 
       // Save Claude's response
