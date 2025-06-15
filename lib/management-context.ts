@@ -49,19 +49,19 @@ export async function gatherManagementContext(
       })
     );
     
-    // Include general assistant conversations in context gathering
-    let generalMessages: Message[] = [];
+    // Include 1-1 assistant conversations in context gathering
+    let oneOnOneMessages: Message[] = [];
     try {
-      generalMessages = await getMessages('general', supabase);
+      oneOnOneMessages = await getMessages('1-1', supabase);
     } catch (error) {
-      // General messages might not exist, that's okay
-      console.log('No general messages found or error retrieving them');
+      // 1-1 messages might not exist, that's okay
+      console.log('No 1-1 messages found or error retrieving them');
     }
     
     // Generate cross-conversation insights
     const crossConversationInsights = generateCrossConversationInsights(
       peopleContexts, 
-      generalMessages,
+      oneOnOneMessages,
       currentPersonId
     );
     
@@ -198,7 +198,7 @@ function generateConversationSummary(person: Person, messages: Message[]): strin
  */
 function generateCrossConversationInsights(
   peopleContexts: PersonContext[],
-  generalMessages: Message[],
+  oneOnOneMessages: Message[],
   currentPersonId: string
 ): string[] {
   const insights: string[] = [];
@@ -231,9 +231,9 @@ function generateCrossConversationInsights(
     insights.push(`You're working with ${stakeholders} key stakeholder${stakeholders > 1 ? 's' : ''}`);
   }
   
-  // Add general conversation insights if available
-  if (generalMessages.length > 0) {
-    insights.push('You\'ve been having strategic management conversations');
+  // Add 1-1 conversation insights if available
+  if (oneOnOneMessages.length > 0) {
+    insights.push('You\'ve been having strategic 1-1 conversations');
   }
   
   return insights.slice(0, 5); // Return top 5 insights

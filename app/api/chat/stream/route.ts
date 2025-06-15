@@ -1,8 +1,9 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getMessages, createMessage } from '@/lib/database';
 import { getChatCompletionStreaming } from '@/lib/claude';
 import { gatherManagementContext } from '@/lib/management-context';
+import type { Person } from '@/types/database';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,14 +21,17 @@ export async function POST(request: NextRequest) {
       return new Response('person_id and message are required', { status: 400 });
     }
 
-    // Handle special case for 'general' assistant
-    let person;
-    if (person_id === 'general') {
+    // Handle special case for '1-1' assistant
+    let person: Person;
+    if (person_id === '1-1') {
       person = {
-        id: 'general',
-        name: 'general',
+        id: '1-1',
+        user_id: '',
+        name: '1-1',
         role: 'Management Assistant',
-        relationship_type: 'assistant'
+        relationship_type: 'assistant',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
     } else {
       // Get person details

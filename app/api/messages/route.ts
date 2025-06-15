@@ -18,13 +18,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'person_id is required' }, { status: 400 });
     }
 
-    // Handle special case for 'general' assistant
-    if (personId === 'general') {
-      // Get messages directly for general conversation
+    // Handle special case for '1-1' assistant
+    if (personId === '1-1') {
+      // Get messages directly for 1-1 conversation
       const { data, error } = await supabase
         .from('messages')
         .select('*')
-        .eq('person_id', 'general')
+        .eq('person_id', '1-1')
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -57,13 +57,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'person_id, content, and is_user are required' }, { status: 400 });
     }
 
-    // Handle special case for 'general' assistant
-    if (person_id === 'general') {
-      // Create message directly for general conversation
+    // Handle special case for '1-1' assistant
+    if (person_id === '1-1') {
+      // Create message directly for 1-1 conversation
       const { data, error } = await supabase
         .from('messages')
         .insert({
-          person_id: 'general',
+          person_id: '1-1',
           content,
           is_user
         })

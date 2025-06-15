@@ -72,12 +72,12 @@ export async function createMessage(
   },
   supabase: SupabaseClient
 ): Promise<Message> {
-  // Handle special case for 'general' assistant
-  if (messageData.person_id === 'general') {
+  // Handle special case for '1-1' assistant
+  if (messageData.person_id === '1-1') {
     const { data, error } = await supabase
       .from('messages')  
       .insert({
-        person_id: 'general',
+        person_id: '1-1',
         content: messageData.content,
         is_user: messageData.is_user
       })

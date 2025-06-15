@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getMessages, createMessage } from '@/lib/database';
 import { getChatCompletion } from '@/lib/claude';
 import { gatherManagementContext } from '@/lib/management-context';
+import type { Person } from '@/types/database';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,15 +21,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'person_id and message are required' }, { status: 400 });
     }
 
-    // Handle special case for 'general' assistant
+    // Handle special case for '1-1' assistant
     let person;
-    if (person_id === 'general') {
+    if (person_id === '1-1') {
       person = {
-        id: 'general',
-        name: 'general',
+        id: '1-1',
+        name: '1-1',
         role: 'Management Assistant',
-        relationship_type: 'assistant'
-      };
+        relationship_type: 'assistant',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      } as Person;
     } else {
       // Get person details
       const { data: personData, error: personError } = await supabase
