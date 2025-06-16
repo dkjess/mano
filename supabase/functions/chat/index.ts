@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { Anthropic } from 'https://esm.sh/@anthropic-ai/sdk@0.24.3'
 import { ManagementContextBuilder, formatContextForPrompt } from '../_shared/management-context.ts'
 import { VectorService } from '../_shared/vector-service.ts'
+import { buildEnhancedSystemPrompt } from '../_shared/prompt-engineering.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -189,16 +190,19 @@ serve(async (req) => {
       is_user: true
     }, supabase)
 
-    // Build enhanced management context with semantic search
+    // Build enhanced management context with conversational intelligence
     const startTime = Date.now()
     const contextBuilder = new ManagementContextBuilder(supabase, user.id)
-    const managementContext = await contextBuilder.buildFullContext(person_id, userMessage)
+    const { context: managementContext, enhancement } = await contextBuilder.buildFullContext(person_id, userMessage)
     const contextBuildTime = Date.now() - startTime
 
     console.log(`Context building took ${contextBuildTime}ms for user ${user.id}`)
     console.log(`Context includes ${managementContext.people.length} people, ${managementContext.recent_themes.length} themes`)
     if (managementContext.semantic_context) {
       console.log(`Semantic context: ${managementContext.semantic_context.similar_conversations.length} similar conversations, ${managementContext.semantic_context.cross_person_insights.length} cross-person insights`)
+    }
+    if (enhancement) {
+      console.log(`Conversational intelligence: ${enhancement.memories.length} memories, ${enhancement.followUps.length} follow-ups, ${enhancement.insights.length} insights`)
     }
 
     // Format conversation history
@@ -207,22 +211,48 @@ serve(async (req) => {
       .map((msg: Message) => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
       .join('\n')
 
-    // Choose base system prompt and enhance with management context
-    let baseSystemPrompt: string
-    if (person.name === 'general') {
-      baseSystemPrompt = GENERAL_SYSTEM_PROMPT
-        .replace('{conversation_history}', historyText || 'No previous conversation')
-    } else {
-      baseSystemPrompt = SYSTEM_PROMPT
-        .replace('{name}', person.name)
-        .replace('{role}', person.role || 'No specific role')
-        .replace('{relationship_type}', person.relationship_type)
-        .replace('{conversation_history}', historyText || 'No previous conversation')
-    }
+    // Build enhanced system prompt
+    let systemPrompt: string
+    if (enhancement) {
+      // Use conversational intelligence to enhance the prompt
+      let baseSystemPrompt: string
+      if (person.name === 'general') {
+        baseSystemPrompt = GENERAL_SYSTEM_PROMPT
+          .replace('{conversation_history}', historyText || 'No previous conversation')
+      } else {
+        baseSystemPrompt = SYSTEM_PROMPT
+          .replace('{name}', person.name)
+          .replace('{role}', person.role || 'No specific role')
+          .replace('{relationship_type}', person.relationship_type)
+          .replace('{conversation_history}', historyText || 'No previous conversation')
+      }
 
-    // Enhance system prompt with management context
-    const enhancedContext = formatContextForPrompt(managementContext, person_id, userMessage)
-    const systemPrompt = baseSystemPrompt.replace('{management_context}', enhancedContext)
+      const enhancedContext = formatContextForPrompt(managementContext, person_id, userMessage)
+      const basePromptWithContext = baseSystemPrompt.replace('{management_context}', enhancedContext)
+
+      systemPrompt = buildEnhancedSystemPrompt(
+        basePromptWithContext,
+        managementContext,
+        enhancement,
+        person_id
+      )
+    } else {
+      // Fallback to basic enhanced context
+      let baseSystemPrompt: string
+      if (person.name === 'general') {
+        baseSystemPrompt = GENERAL_SYSTEM_PROMPT
+          .replace('{conversation_history}', historyText || 'No previous conversation')
+      } else {
+        baseSystemPrompt = SYSTEM_PROMPT
+          .replace('{name}', person.name)
+          .replace('{role}', person.role || 'No specific role')
+          .replace('{relationship_type}', person.relationship_type)
+          .replace('{conversation_history}', historyText || 'No previous conversation')
+      }
+
+      const enhancedContext = formatContextForPrompt(managementContext, person_id, userMessage)
+      systemPrompt = baseSystemPrompt.replace('{management_context}', enhancedContext)
+    }
 
     // Call Claude API with retry logic
     let claudeResponse: string = 'Sorry, I had trouble generating a response.'

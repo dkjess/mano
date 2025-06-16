@@ -1,6 +1,7 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { VectorService, VectorSearchResult } from './vector-service.ts'
 import { EmbeddingJob } from './embedding-job.ts'
+import { ConversationIntelligence } from './conversation-intelligence.ts'
 
 export interface PersonSummary {
   id: string;
@@ -54,7 +55,10 @@ export class ManagementContextBuilder {
     this.embeddingJob = new EmbeddingJob(supabase, this.vectorService);
   }
 
-  async buildFullContext(currentPersonId: string, currentQuery?: string): Promise<ManagementContext> {
+  async buildFullContext(currentPersonId: string, currentQuery?: string): Promise<{
+    context: ManagementContext;
+    enhancement?: any;
+  }> {
     try {
       // Start background embedding job (don't wait for it)
       this.embeddingJob.processUnembeddedMessages(this.userId).catch(console.error);
@@ -67,7 +71,7 @@ export class ManagementContextBuilder {
         currentQuery ? this.getSemanticContext(currentQuery, currentPersonId) : Promise.resolve(undefined)
       ]);
 
-      return {
+      const context: ManagementContext = {
         people,
         team_size: this.calculateTeamSize(people),
         recent_themes: themes,
@@ -75,15 +79,36 @@ export class ManagementContextBuilder {
         conversation_patterns: patterns,
         semantic_context: semanticContext
       };
+
+      // Generate conversational enhancement
+      let enhancement;
+      if (currentQuery) {
+        const conversationIntelligence = new ConversationIntelligence(
+          this.supabase,
+          this.vectorService,
+          this.userId
+        );
+
+        enhancement = await conversationIntelligence.analyzeConversationContext(
+          currentQuery,
+          currentPersonId,
+          semanticContext,
+          context
+        );
+      }
+
+      return { context, enhancement };
     } catch (error) {
       console.error('Error building management context:', error);
       // Return minimal context on error
       return {
-        people: [],
-        team_size: { direct_reports: 0, stakeholders: 0, managers: 0, peers: 0 },
-        recent_themes: [],
-        current_challenges: [],
-        conversation_patterns: { most_discussed_people: [], trending_topics: [], cross_person_mentions: [] }
+        context: {
+          people: [],
+          team_size: { direct_reports: 0, stakeholders: 0, managers: 0, peers: 0 },
+          recent_themes: [],
+          current_challenges: [],
+          conversation_patterns: { most_discussed_people: [], trending_topics: [], cross_person_mentions: [] }
+        }
       };
     }
   }
