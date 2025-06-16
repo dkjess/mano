@@ -1,4 +1,6 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { VectorService, VectorSearchResult } from './vector-service.ts'
+import { EmbeddingJob } from './embedding-job.ts'
 
 export interface PersonSummary {
   id: string;
@@ -36,18 +38,33 @@ export interface ManagementContext {
       context: string;
     }>;
   };
+  semantic_context?: {
+    similar_conversations: VectorSearchResult[];
+    cross_person_insights: VectorSearchResult[];
+    related_themes: any[];
+  };
 }
 
 export class ManagementContextBuilder {
-  constructor(private supabase: SupabaseClient, private userId: string) {}
+  private vectorService: VectorService;
+  private embeddingJob: EmbeddingJob;
 
-  async buildFullContext(currentPersonId: string): Promise<ManagementContext> {
+  constructor(private supabase: SupabaseClient, private userId: string) {
+    this.vectorService = new VectorService(supabase);
+    this.embeddingJob = new EmbeddingJob(supabase, this.vectorService);
+  }
+
+  async buildFullContext(currentPersonId: string, currentQuery?: string): Promise<ManagementContext> {
     try {
-      const [people, themes, challenges, patterns] = await Promise.all([
+      // Start background embedding job (don't wait for it)
+      this.embeddingJob.processUnembeddedMessages(this.userId).catch(console.error);
+      
+      const [people, themes, challenges, patterns, semanticContext] = await Promise.all([
         this.getPeopleOverview(),
         this.getRecentThemes(),
         this.getCurrentChallenges(),
-        this.getConversationPatterns()
+        this.getConversationPatterns(),
+        currentQuery ? this.getSemanticContext(currentQuery, currentPersonId) : Promise.resolve(undefined)
       ]);
 
       return {
@@ -55,7 +72,8 @@ export class ManagementContextBuilder {
         team_size: this.calculateTeamSize(people),
         recent_themes: themes,
         current_challenges: challenges,
-        conversation_patterns: patterns
+        conversation_patterns: patterns,
+        semantic_context: semanticContext
       };
     } catch (error) {
       console.error('Error building management context:', error);
@@ -67,6 +85,26 @@ export class ManagementContextBuilder {
         current_challenges: [],
         conversation_patterns: { most_discussed_people: [], trending_topics: [], cross_person_mentions: [] }
       };
+    }
+  }
+
+  private async getSemanticContext(query: string, currentPersonId: string) {
+    try {
+      const context = await this.vectorService.findSemanticContext(
+        this.userId,
+        query,
+        currentPersonId
+      );
+      
+      // Transform to match interface naming
+      return {
+        similar_conversations: context.similarConversations,
+        cross_person_insights: context.crossPersonInsights,
+        related_themes: context.relatedThemes
+      };
+    } catch (error) {
+      console.error('Error getting semantic context:', error);
+      return undefined;
     }
   }
 
@@ -298,8 +336,8 @@ export class ManagementContextBuilder {
   }
 }
 
-export function formatContextForPrompt(context: ManagementContext, currentPersonId: string): string {
-  const { people, team_size, recent_themes, current_challenges } = context;
+export function formatContextForPrompt(context: ManagementContext, currentPersonId: string, currentQuery?: string): string {
+  const { people, team_size, recent_themes, current_challenges, semantic_context } = context;
 
   // Handle case where no team members exist yet
   if (people.length === 0) {
@@ -330,12 +368,32 @@ ${recent_themes.map(t => `- ${t.theme}: discussed ${t.frequency} times across ${
 CURRENT CHALLENGES DETECTED:
 ${current_challenges.map(c => `- ${c}`).join('\n')}` : '';
 
+  // Add semantic context if available
+  let semanticSection = '';
+  if (semantic_context && currentQuery) {
+    if (semantic_context.similar_conversations.length > 0) {
+      semanticSection += `
+RELEVANT PAST DISCUSSIONS:
+${semantic_context.similar_conversations.slice(0, 3).map(conv => 
+  `- ${conv.person_id === 'general' ? 'General discussion' : people.find(p => p.id === conv.person_id)?.name || 'Unknown'}: "${conv.content.substring(0, 100)}..." (${Math.round(conv.similarity * 100)}% relevant)`
+).join('\n')}`;
+    }
+
+    if (semantic_context.cross_person_insights.length > 0) {
+      semanticSection += `
+RELATED INSIGHTS FROM OTHER CONVERSATIONS:
+${semantic_context.cross_person_insights.slice(0, 2).map(insight => 
+  `- ${people.find(p => p.id === insight.person_id)?.name || 'Unknown'}: "${insight.content.substring(0, 100)}..."`
+).join('\n')}`;
+    }
+  }
+
   // Context awareness note
   const contextNote = currentPersonId === 'general' 
     ? '\nCONVERSATION TYPE: General management discussion - use full team context for strategic advice'
     : `\nCONVERSATION TYPE: Focused discussion about ${people.find(p => p.id === currentPersonId)?.name || 'team member'} - but you have awareness of broader team context`;
 
-  return `${teamOverview}${themesSection}${challengesSection}${contextNote}
+  return `${teamOverview}${themesSection}${challengesSection}${semanticSection}${contextNote}
 
-When responding, you can reference insights from other team members and conversations when relevant, but stay focused on the current discussion thread. Use this team awareness to provide more contextual and interconnected management advice.`;
+When responding, you can reference insights from other team members and conversations when relevant, especially the semantic context provided above. Use this comprehensive awareness to provide deeply contextual and interconnected management advice.`;
 } 

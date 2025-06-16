@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { Anthropic } from 'https://esm.sh/@anthropic-ai/sdk@0.24.3'
 import { ManagementContextBuilder, formatContextForPrompt } from '../_shared/management-context.ts'
+import { VectorService } from '../_shared/vector-service.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -188,14 +189,17 @@ serve(async (req) => {
       is_user: true
     }, supabase)
 
-    // Build enhanced management context
+    // Build enhanced management context with semantic search
     const startTime = Date.now()
     const contextBuilder = new ManagementContextBuilder(supabase, user.id)
-    const managementContext = await contextBuilder.buildFullContext(person_id)
+    const managementContext = await contextBuilder.buildFullContext(person_id, userMessage)
     const contextBuildTime = Date.now() - startTime
 
     console.log(`Context building took ${contextBuildTime}ms for user ${user.id}`)
     console.log(`Context includes ${managementContext.people.length} people, ${managementContext.recent_themes.length} themes`)
+    if (managementContext.semantic_context) {
+      console.log(`Semantic context: ${managementContext.semantic_context.similar_conversations.length} similar conversations, ${managementContext.semantic_context.cross_person_insights.length} cross-person insights`)
+    }
 
     // Format conversation history
     const historyText = conversationHistory
@@ -217,11 +221,11 @@ serve(async (req) => {
     }
 
     // Enhance system prompt with management context
-    const enhancedContext = formatContextForPrompt(managementContext, person_id)
+    const enhancedContext = formatContextForPrompt(managementContext, person_id, userMessage)
     const systemPrompt = baseSystemPrompt.replace('{management_context}', enhancedContext)
 
     // Call Claude API with retry logic
-    let claudeResponse: string
+    let claudeResponse: string = 'Sorry, I had trouble generating a response.'
     const maxRetries = 2
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
@@ -269,6 +273,25 @@ serve(async (req) => {
       content: claudeResponse,
       is_user: false
     }, supabase)
+
+    // Store embeddings for both messages (don't await - background task)
+    const vectorService = new VectorService(supabase)
+    
+    vectorService.storeMessageEmbedding(
+      user.id,
+      person_id,
+      userMessageRecord.id,
+      userMessage,
+      'user'
+    ).catch(console.error)
+    
+    vectorService.storeMessageEmbedding(
+      user.id,
+      person_id,
+      assistantMessage.id,
+      claudeResponse,
+      'assistant'
+    ).catch(console.error)
 
     // Return response in same format as current client
     return new Response(JSON.stringify({
