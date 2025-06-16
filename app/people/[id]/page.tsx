@@ -63,22 +63,22 @@ export default function PersonDetailPage() {
 
   const fetchPersonAndMessages = async () => {
     try {
-      // Handle special case for '1-1' assistant
-      if (personId === '1-1') {
+      // Handle special case for 'general' assistant
+      if (personId === 'general') {
         setPerson({
-          id: '1-1',
+          id: 'general',
           user_id: '', 
           name: 'General',
-          role: 'Management companion',
+          role: 'Your Management Coach',
           relationship_type: 'assistant',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });
 
-        // Fetch messages for 1-1 conversation
-        const messagesResponse = await fetch(`/api/messages?person_id=1-1`);
+        // Fetch messages for general conversation
+        const messagesResponse = await fetch(`/api/messages?person_id=general`);
         if (!messagesResponse.ok) {
-          console.error('Failed to fetch 1-1 messages:', messagesResponse.status);
+          console.error('Failed to fetch general messages:', messagesResponse.status);
           setMessages([]);
         } else {
           const messagesData = await messagesResponse.json();
@@ -964,8 +964,8 @@ export default function PersonDetailPage() {
           <div className="people-section">
             <div className="section-title">Assistant</div>
             <Link 
-              href="/people/1-1"
-              className={`person-item general ${personId === '1-1' ? 'active' : ''}`}
+              href="/people/general"
+              className={`person-item general ${personId === 'general' ? 'active' : ''}`}
             >
               <div className="person-avatar">🤲</div>
               <div className="person-info">
@@ -1010,13 +1010,13 @@ export default function PersonDetailPage() {
               <div className="text-center py-12">
                 <div className="text-4xl mb-4">👋</div>
                 <h3 className="text-lg font-bold text-gray-900 mb-2">
-                  {personId === '1-1' 
+                  {personId === 'general' 
                     ? 'Start a conversation about management' 
                     : `Start a conversation about ${person.name}`
                   }
                 </h3>
                 <p className="text-gray-600">
-                  {personId === '1-1'
+                  {personId === 'general'
                     ? 'Ask me about strategic thinking, team building, communication strategies, and management challenges'
                     : `Ask me anything about managing your relationship with ${person.name}`
                   }

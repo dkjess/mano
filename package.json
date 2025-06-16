@@ -8,7 +8,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "setup-test-user": "npx tsx scripts/setup-test-user.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.53.0",
@@ -23,6 +24,7 @@
     "@tailwindcss/typography": "^0.5.16",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dotenv": "^16.5.0",
     "lucide-react": "^0.511.0",
     "next": "latest",
     "next-themes": "^0.4.6",

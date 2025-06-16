@@ -162,22 +162,22 @@ export default function PeoplePage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {/* 1-1 Management Assistant - Always show at top when not searching */}
+          {/* General Management Assistant - Always show at top when not searching */}
           {!searchTerm && (
             <>
-              <Link href="/people/1-1" className="block">
+              <Link href="/people/general" className="block">
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 shadow-sm border-2 border-blue-200 hover:shadow-md hover:border-blue-300 transition-all">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
                       <div className="text-2xl">
-                        🧠
+                        🤲
                       </div>
                       <div>
                         <div className="font-medium-bold text-gray-900">
-                          1-1
+                          General
                         </div>
                         <div className="text-sm text-gray-600">
-                          One-on-one management coaching and strategic advice
+                          Management coaching and strategic advice
                         </div>
                       </div>
                     </div>

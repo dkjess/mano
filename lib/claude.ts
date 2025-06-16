@@ -11,7 +11,7 @@ export const SYSTEM_PROMPT = `You are Mano, an intelligent management assistant 
 
 Your role is to:
 - Provide thoughtful management advice based on conversation history
-- Suggest conversation starters and topics for 1-1s
+- Suggest conversation starters and topics for one-on-ones
 - Help managers track important information about their people
 - Offer insights about team dynamics and individual needs
 - Be supportive but practical in your guidance
@@ -123,8 +123,8 @@ export async function getChatCompletion(
 
  let systemPrompt: string;
  
- // Use different system prompt for 1-1 assistant
- if (personName === '1-1') {
+ // Use different system prompt for general assistant
+ if (personName === 'General') {
    systemPrompt = GENERAL_SYSTEM_PROMPT
      .replace('{management_context}', contextText || 'No additional team context available.')
      .replace('{conversation_history}', historyText || 'No previous conversation');
@@ -159,8 +159,8 @@ export async function getChatCompletionStreaming(
 
  let systemPrompt: string;
  
- // Use different system prompt for 1-1 assistant
- if (personName === '1-1') {
+ // Use different system prompt for general assistant
+ if (personName === 'General') {
    systemPrompt = GENERAL_SYSTEM_PROMPT
      .replace('{management_context}', contextText || 'No additional team context available.')
      .replace('{conversation_history}', historyText || 'No previous conversation');

@@ -69,28 +69,23 @@ export async function createMessage(
     person_id: string;
     content: string;
     is_user: boolean;
+    user_id?: string;
   },
   supabase: SupabaseClient
 ): Promise<Message> {
-  // Handle special case for '1-1' assistant
-  if (messageData.person_id === '1-1') {
-    const { data, error } = await supabase
-      .from('messages')  
-      .insert({
-        person_id: '1-1',
-        content: messageData.content,
-        is_user: messageData.is_user
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
+  // Ensure user_id is provided for all messages
+  if (!messageData.user_id) {
+    throw new Error('user_id is required for all messages');
   }
 
   const { data, error } = await supabase
     .from('messages')
-    .insert(messageData)
+    .insert({
+      person_id: messageData.person_id,
+      content: messageData.content,
+      is_user: messageData.is_user,
+      user_id: messageData.user_id
+    })
     .select()
     .single();
 

@@ -4,6 +4,8 @@ import { Anthropic } from 'https://esm.sh/@anthropic-ai/sdk@0.24.3'
 import { ManagementContextBuilder, formatContextForPrompt } from '../_shared/management-context.ts'
 import { VectorService } from '../_shared/vector-service.ts'
 import { buildEnhancedSystemPrompt } from '../_shared/prompt-engineering.ts'
+import { OnboardingService } from '../_shared/onboarding-service.ts'
+import { getOnboardingPrompt } from '../_shared/onboarding-prompts.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,7 +40,7 @@ const SYSTEM_PROMPT = `You are Mano, an intelligent management assistant and hel
 
 Your role is to:
 - Provide thoughtful management advice based on conversation history
-- Suggest conversation starters and topics for 1-1s
+- Suggest conversation starters and topics for one-on-ones
 - Help managers track important information about their people
 - Offer insights about team dynamics and individual needs
 - Be supportive but practical in your guidance
@@ -101,6 +103,7 @@ async function createMessage(
     person_id: string;
     content: string;
     is_user: boolean;
+    user_id: string;
   },
   supabase: any
 ): Promise<Message> {
@@ -151,6 +154,49 @@ serve(async (req) => {
       })
     }
 
+    // Initialize onboarding service
+    const onboardingService = new OnboardingService(supabase)
+    const onboardingContext = await onboardingService.getOnboardingContext(user.id)
+
+    // Handle onboarding logic
+    if (onboardingContext.isNewUser || !onboardingContext.hasPreferredName) {
+      // Extract name from message if user is providing it
+      if (!onboardingContext.hasPreferredName) {
+        const extractedName = onboardingService.extractNameFromMessage(userMessage)
+        if (extractedName) {
+          await onboardingService.updatePreferredName(user.id, extractedName)
+          onboardingContext.hasPreferredName = true
+        }
+      }
+
+      // Auto-create team members mentioned in conversation
+      const teamMentions = onboardingService.detectTeamMemberMention(userMessage)
+      for (const mention of teamMentions) {
+        try {
+          await supabase.from('people').insert({
+            user_id: user.id,
+            name: mention.name,
+            role: mention.role || null,
+            relationship_type: mention.relationship || 'direct_report'
+          })
+        } catch (error) {
+          // Ignore duplicate entries
+          console.log(`Person ${mention.name} might already exist`)
+        }
+      }
+
+      // Update onboarding step if needed
+      if (teamMentions.length > 0 && onboardingContext.currentStep === 'welcome') {
+        await onboardingService.updateOnboardingStep(user.id, 'team_building')
+      }
+    }
+
+    // Check if onboarding should be completed
+    if (!onboardingContext.isNewUser && await onboardingService.shouldCompleteOnboarding(user.id)) {
+      await onboardingService.completeOnboarding(user.id)
+      onboardingContext.isNewUser = false
+    }
+
     // Get person details (or handle 'general' case)
     let person: Person
     if (person_id === 'general') {
@@ -187,7 +233,8 @@ serve(async (req) => {
     const userMessageRecord = await createMessage({
       person_id,
       content: userMessage,
-      is_user: true
+      is_user: true,
+      user_id: user.id
     }, supabase)
 
     // Build enhanced management context with conversational intelligence
@@ -211,47 +258,58 @@ serve(async (req) => {
       .map((msg: Message) => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
       .join('\n')
 
-    // Build enhanced system prompt
+    // Choose system prompt based on onboarding state
     let systemPrompt: string
-    if (enhancement) {
-      // Use conversational intelligence to enhance the prompt
-      let baseSystemPrompt: string
-      if (person.name === 'general') {
-        baseSystemPrompt = GENERAL_SYSTEM_PROMPT
-          .replace('{conversation_history}', historyText || 'No previous conversation')
-      } else {
-        baseSystemPrompt = SYSTEM_PROMPT
-          .replace('{name}', person.name)
-          .replace('{role}', person.role || 'No specific role')
-          .replace('{relationship_type}', person.relationship_type)
-          .replace('{conversation_history}', historyText || 'No previous conversation')
-      }
-
-      const enhancedContext = formatContextForPrompt(managementContext, person_id, userMessage)
-      const basePromptWithContext = baseSystemPrompt.replace('{management_context}', enhancedContext)
-
-      systemPrompt = buildEnhancedSystemPrompt(
-        basePromptWithContext,
-        managementContext,
-        enhancement,
-        person_id
+    
+    if (onboardingContext.isNewUser || !onboardingContext.hasPreferredName) {
+      // Use onboarding prompt
+      const userProfile = await onboardingService.getUserProfile(user.id)
+      systemPrompt = getOnboardingPrompt(
+        onboardingContext.currentStep,
+        userProfile?.preferred_name || undefined
       )
     } else {
-      // Fallback to basic enhanced context
-      let baseSystemPrompt: string
-      if (person.name === 'general') {
-        baseSystemPrompt = GENERAL_SYSTEM_PROMPT
-          .replace('{conversation_history}', historyText || 'No previous conversation')
-      } else {
-        baseSystemPrompt = SYSTEM_PROMPT
-          .replace('{name}', person.name)
-          .replace('{role}', person.role || 'No specific role')
-          .replace('{relationship_type}', person.relationship_type)
-          .replace('{conversation_history}', historyText || 'No previous conversation')
-      }
+      // Use enhanced system prompt with conversational intelligence
+      if (enhancement) {
+        // Use conversational intelligence to enhance the prompt
+        let baseSystemPrompt: string
+        if (person.name === 'general') {
+          baseSystemPrompt = GENERAL_SYSTEM_PROMPT
+            .replace('{conversation_history}', historyText || 'No previous conversation')
+        } else {
+          baseSystemPrompt = SYSTEM_PROMPT
+            .replace('{name}', person.name)
+            .replace('{role}', person.role || 'No specific role')
+            .replace('{relationship_type}', person.relationship_type)
+            .replace('{conversation_history}', historyText || 'No previous conversation')
+        }
 
-      const enhancedContext = formatContextForPrompt(managementContext, person_id, userMessage)
-      systemPrompt = baseSystemPrompt.replace('{management_context}', enhancedContext)
+        const enhancedContext = formatContextForPrompt(managementContext, person_id, userMessage)
+        const basePromptWithContext = baseSystemPrompt.replace('{management_context}', enhancedContext)
+
+        systemPrompt = buildEnhancedSystemPrompt(
+          basePromptWithContext,
+          managementContext,
+          enhancement,
+          person_id
+        )
+      } else {
+        // Fallback to basic enhanced context
+        let baseSystemPrompt: string
+        if (person.name === 'general') {
+          baseSystemPrompt = GENERAL_SYSTEM_PROMPT
+            .replace('{conversation_history}', historyText || 'No previous conversation')
+        } else {
+          baseSystemPrompt = SYSTEM_PROMPT
+            .replace('{name}', person.name)
+            .replace('{role}', person.role || 'No specific role')
+            .replace('{relationship_type}', person.relationship_type)
+            .replace('{conversation_history}', historyText || 'No previous conversation')
+        }
+
+        const enhancedContext = formatContextForPrompt(managementContext, person_id, userMessage)
+        systemPrompt = baseSystemPrompt.replace('{management_context}', enhancedContext)
+      }
     }
 
     // Call Claude API with retry logic
@@ -301,7 +359,8 @@ serve(async (req) => {
     const assistantMessage = await createMessage({
       person_id,
       content: claudeResponse,
-      is_user: false
+      is_user: false,
+      user_id: user.id
     }, supabase)
 
     // Store embeddings for both messages (don't await - background task)

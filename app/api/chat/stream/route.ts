@@ -21,13 +21,13 @@ export async function POST(request: NextRequest) {
       return new Response('person_id and message are required', { status: 400 });
     }
 
-    // Handle special case for '1-1' assistant
+    // Handle special case for 'general' assistant
     let person: Person;
-    if (person_id === '1-1') {
+    if (person_id === 'general') {
       person = {
-        id: '1-1',
+        id: 'general',
         user_id: '',
-        name: '1-1',
+        name: 'General',
         role: 'Management Assistant',
         relationship_type: 'assistant',
         created_at: new Date().toISOString(),
@@ -65,7 +65,8 @@ export async function POST(request: NextRequest) {
     const userMessageRecord = await createMessage({
       person_id,
       content: userMessage,
-      is_user: true
+      is_user: true,
+      user_id: user.id
     }, supabase);
 
     try {
@@ -109,7 +110,8 @@ export async function POST(request: NextRequest) {
             const assistantMessage = await createMessage({
               person_id,
               content: fullResponse,
-              is_user: false
+              is_user: false,
+              user_id: user.id
             }, supabase);
 
             // Send completion message
@@ -142,7 +144,8 @@ export async function POST(request: NextRequest) {
             const errorMessageRecord = await createMessage({
               person_id,
               content: errorMessage,
-              is_user: false
+              is_user: false,
+              user_id: user.id
             }, supabase);
 
             // Send error to client

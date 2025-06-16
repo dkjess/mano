@@ -149,7 +149,7 @@ Users (Supabase Auth)
 "You are Mano, an intelligent management assistant and helping hand for managers.
 Your role is to:
 - Provide thoughtful management advice based on conversation history
-- Suggest conversation starters and topics for 1-1s
+- Suggest conversation starters and topics for one-on-ones
 - Help managers track important information about their people
 - Offer insights about team dynamics and individual needs
 - Be supportive but practical in your guidance"
@@ -199,7 +199,7 @@ Your role is to:
 ### Typical Session
 1. **Review people list** to see who needs attention
 2. **Open specific person** to review history
-3. **Chat with AI** about upcoming 1-1 or management challenge
+3. **Chat with AI** about upcoming one-on-one or management challenge
 4. **Take action** based on AI recommendations
 
 ## 📱 PWA Implementation Details
