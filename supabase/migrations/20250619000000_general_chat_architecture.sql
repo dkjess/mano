@@ -17,46 +17,54 @@ DROP POLICY IF EXISTS "Users can delete messages for their people" ON messages;
 -- Create comprehensive RLS policies for messages
 CREATE POLICY "Users can view their messages" ON messages
   FOR SELECT USING (
-    -- Allow access to general conversation messages for authenticated users
-    (person_id = 'general' AND user_id = auth.uid()) OR
-    -- Allow access to person-specific messages they own
-    (person_id != 'general' AND person_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND EXISTS (
-      SELECT 1 FROM people 
-      WHERE people.id = person_id::uuid
-      AND people.user_id = auth.uid()
-    ))
+    user_id = auth.uid() AND (
+      -- Allow access to general conversation messages
+      person_id = 'general' OR
+      -- Allow access to person-specific messages they own
+      EXISTS (
+        SELECT 1 FROM people 
+        WHERE people.id::text = messages.person_id 
+        AND people.user_id = auth.uid()
+      )
+    )
   );
 
 CREATE POLICY "Users can insert their messages" ON messages
   FOR INSERT WITH CHECK (
-    -- Allow inserting general conversation messages with proper user_id
-    (person_id = 'general' AND user_id = auth.uid()) OR
-    -- Allow inserting person-specific messages they own
-    (person_id != 'general' AND person_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND user_id = auth.uid() AND EXISTS (
-      SELECT 1 FROM people 
-      WHERE people.id = person_id::uuid
-      AND people.user_id = auth.uid()
-    ))
+    user_id = auth.uid() AND (
+      -- Allow inserting general conversation messages
+      person_id = 'general' OR
+      -- Allow inserting person-specific messages they own
+      EXISTS (
+        SELECT 1 FROM people 
+        WHERE people.id::text = person_id 
+        AND people.user_id = auth.uid()
+      )
+    )
   );
 
 CREATE POLICY "Users can update their messages" ON messages
   FOR UPDATE USING (
-    (person_id = 'general' AND user_id = auth.uid()) OR
-    (person_id != 'general' AND person_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND user_id = auth.uid() AND EXISTS (
-      SELECT 1 FROM people 
-      WHERE people.id = person_id::uuid
-      AND people.user_id = auth.uid()
-    ))
+    user_id = auth.uid() AND (
+      person_id = 'general' OR
+      EXISTS (
+        SELECT 1 FROM people 
+        WHERE people.id::text = person_id 
+        AND people.user_id = auth.uid()
+      )
+    )
   );
 
 CREATE POLICY "Users can delete their messages" ON messages
   FOR DELETE USING (
-    (person_id = 'general' AND user_id = auth.uid()) OR
-    (person_id != 'general' AND person_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND user_id = auth.uid() AND EXISTS (
-      SELECT 1 FROM people 
-      WHERE people.id = person_id::uuid
-      AND people.user_id = auth.uid()
-    ))
+    user_id = auth.uid() AND (
+      person_id = 'general' OR
+      EXISTS (
+        SELECT 1 FROM people 
+        WHERE people.id::text = person_id 
+        AND people.user_id = auth.uid()
+      )
+    )
   );
 
 -- Create indexes for better performance
@@ -117,7 +125,7 @@ SELECT
     ELSE p.relationship_type
   END as relationship_type
 FROM messages m
-LEFT JOIN people p ON (m.person_id != 'general' AND m.person_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND p.id = m.person_id::uuid);
+LEFT JOIN people p ON (m.person_id != 'general' AND p.id::text = m.person_id);
 
 -- Grant access to the view
 GRANT SELECT ON messages_with_person_info TO authenticated;
