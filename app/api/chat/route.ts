@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendChatMessage } from '@/lib/api/chat';
+import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { person_id, message: userMessage } = body;
 
@@ -10,10 +17,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'person_id and message are required' }, { status: 400 });
     }
 
-    // Use new server-side API
-    const response = await sendChatMessage(person_id, userMessage);
+    // Call the edge function directly with proper auth headers
+    const { data, error } = await supabase.functions.invoke('chat', {
+      body: {
+        person_id: person_id,
+        message: userMessage
+      }
+    });
 
-    return NextResponse.json(response);
+    if (error) {
+      console.error('Chat function error:', error);
+      throw new Error(error.message || 'Failed to send message');
+    }
+
+    return NextResponse.json(data);
 
   } catch (error: any) {
     console.error('Error in chat API:', error);

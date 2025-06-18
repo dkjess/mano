@@ -66,12 +66,12 @@ export default function RootLayout({
         <link rel="apple-touch-startup-image" href="/apple-splash-750-1334.jpg" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/apple-splash-828-1792.jpg" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
       </head>
-              <body className="bg-mano-bg font-sf antialiased">
-          <ServiceWorkerRegistration />
-          <InstallPrompt />
-          {children}
-          <DebugPanel />
-        </body>
+      <body>
+        <ServiceWorkerRegistration />
+        <InstallPrompt />
+        {children}
+        <DebugPanel />
+      </body>
     </html>
   );
 }

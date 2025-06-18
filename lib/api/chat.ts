@@ -1,8 +1,10 @@
 import { createClient } from '@/lib/supabase/client'
+import { PersonDetectionResult } from '@/lib/enhanced-person-detection-safe'
 
 export interface ChatResponse {
   userMessage: any;
   assistantMessage: any;
+  personDetection?: PersonDetectionResult;
   shouldRetry?: boolean;
 }
 

@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -13,6 +11,7 @@ export default function PeoplePage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState<any>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -69,190 +68,216 @@ export default function PeoplePage() {
     }
   };
 
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+  };
+
+  const toggleMobileMenu = () => {
+    setMobileMenuOpen(!mobileMenuOpen);
+  };
+
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-64 font-sf">
-        <div className="text-center">
-          <div className="text-2xl mb-2">🤚</div>
-          <div className="text-gray-600 font-medium-bold">Loading your people...</div>
-        </div>
+      <div className="loading-state">
+        <div className="loading-emoji">🤲</div>
+        <div className="loading-text">Loading your people...</div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 font-sf">
-      {/* Header with user info and logout */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-medium-bold text-gray-900 flex items-center gap-2">
-            👋 Your People
-          </h1>
-          <p className="text-gray-600 mt-2">Manage relationships with your team and stakeholders</p>
-        </div>
-        <div className="flex items-center gap-4">
-          {user && (
-            <>
-              {user.user_metadata?.avatar_url && (
-                <img 
-                  src={user.user_metadata.avatar_url} 
-                  alt="Profile"
-                  className="w-8 h-8 rounded-full"
-                />
-              )}
-              <div className="text-right">
-                <div className="text-sm font-medium text-gray-900">
-                  {user.user_metadata?.full_name || user.email}
-                </div>
-                {user.user_metadata?.full_name && (
-                  <div className="text-xs text-gray-500">{user.email}</div>
-                )}
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleLogout}
-                className="font-medium-bold"
-              >
-                👋 Sign Out
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Add Person Button */}
-      <div className="flex justify-between items-center mb-6">
-        <div></div>
-        <Button asChild className="font-medium-bold">
-          <Link href="/people/new">🤲 Add Person</Link>
-        </Button>
-      </div>
-
-      {/* Search */}
-      <div className="mb-6">
-        <div className="relative">
-          <Input
-            type="text"
-            placeholder="🔍 Search people..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="font-sf"
-          />
-        </div>
-      </div>
-
-      {/* People List */}
-      {filteredPeople.length === 0 && !searchTerm ? (
-        <div className="text-center py-12">
-          <div className="text-4xl mb-4">🤲</div>
-          <h3 className="text-lg font-medium-bold text-gray-900 mb-2">
-            {searchTerm ? 'No people found' : 'No people yet'}
-          </h3>
-          <p className="text-gray-600 mb-6">
-            {searchTerm 
-              ? 'Try adjusting your search terms' 
-              : 'Add your first team member or stakeholder to get started'}
-          </p>
-          {!searchTerm && (
-            <Button asChild>
-              <Link href="/people/new">🤲 Add Your First Person</Link>
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {/* General Management Assistant - Always show at top when not searching */}
-          {!searchTerm && (
-            <>
-              <Link href="/people/general" className="block">
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 shadow-sm border-2 border-blue-200 hover:shadow-md hover:border-blue-300 transition-all">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="text-2xl">
-                        🤲
-                      </div>
-                      <div>
-                        <div className="font-medium-bold text-gray-900">
-                          General
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          Management coaching and strategic advice
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-blue-600 mb-1">
-                        Management Assistant
-                      </div>
-                      <div className="text-xs text-gray-400">
-                        Always available
-                      </div>
-                    </div>
-                  </div>
+    <div className="conversation-app">
+      {/* Mobile overlay */}
+      <div 
+        className={`mobile-overlay ${mobileMenuOpen ? 'active' : ''}`}
+        onClick={closeMobileMenu}
+      />
+      
+      <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+        <header className="sidebar-header">
+          <h1 className="app-title">🤲 Mano</h1>
+          <p className="app-subtitle">Your management companion</p>
+        </header>
+        
+        <nav className="navigation">
+          <section className="nav-section">
+            <h2 className="nav-section-title">Coach</h2>
+            <div className="nav-section-items">
+              <Link href="/people/general" className="nav-item nav-item--special" onClick={closeMobileMenu}>
+                <span className="nav-item-emoji">🤲</span>
+                <div className="nav-item-content">
+                  <span className="nav-item-name">General</span>
+                  <span className="nav-item-subtitle">Management coaching</span>
                 </div>
               </Link>
-              
-              {/* Separator line */}
-              {filteredPeople.length > 0 && (
-                <div className="flex items-center py-2">
-                  <div className="flex-1 border-t border-gray-200"></div>
-                  <div className="px-4 text-xs text-gray-500 font-medium">Your Team</div>
-                  <div className="flex-1 border-t border-gray-200"></div>
-                </div>
-              )}
-            </>
-          )}
+            </div>
+          </section>
           
-          {/* Show message when no people but has search term */}
-          {filteredPeople.length === 0 && searchTerm && (
-            <div className="text-center py-12">
-              <div className="text-4xl mb-4">🔍</div>
-              <h3 className="text-lg font-medium-bold text-gray-900 mb-2">
-                No people found
-              </h3>
-              <p className="text-gray-600 mb-6">
+          <section className="nav-section">
+            <h2 className="nav-section-title">Your Team</h2>
+            <div className="nav-section-items">
+              {people.map(person => (
+                <Link key={person.id} href={`/people/${person.id}`} className="nav-item" onClick={closeMobileMenu}>
+                  <span className="nav-item-emoji">
+                    {getRelationshipEmoji(person.relationship_type || 'peer')}
+                  </span>
+                  <div className="nav-item-content">
+                    <span className="nav-item-name">{person.name}</span>
+                    <span className="nav-item-subtitle">{person.role || getRelationshipLabel(person.relationship_type || 'peer')}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        </nav>
+        
+        <div className="nav-add-person">
+          <Link href="/people/new" className="add-person-nav-button" onClick={closeMobileMenu}>
+            <span>🤲</span>
+            <span>Add Person</span>
+          </Link>
+        </div>
+      </aside>
+
+      <main className={`main-content ${mobileMenuOpen ? 'mobile-pushed' : ''}`}>
+        <div className={`people-container ${mobileMenuOpen ? 'mobile-pushed' : ''}`}>
+          <header className="people-header">
+            <div className="conversation-header-content">
+              <h1 className="people-title">👋 Your People</h1>
+              <p className="people-subtitle">Manage relationships with your team and stakeholders</p>
+            </div>
+            
+            <button 
+              className="mobile-menu-button"
+              onClick={toggleMobileMenu}
+              aria-label="Toggle menu"
+            >
+              ☰
+            </button>
+            
+            {user && (
+              <div style={{ position: 'absolute', top: 'var(--space-2xl)', right: 'var(--space-2xl)', display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                {user.user_metadata?.avatar_url && (
+                  <img 
+                    src={user.user_metadata.avatar_url} 
+                    alt="Profile"
+                    style={{ width: '32px', height: '32px', borderRadius: '50%' }}
+                  />
+                )}
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--color-gray-900)', fontFamily: 'var(--font-secondary)' }}>
+                    {user.user_metadata?.full_name || user.email}
+                  </div>
+                  {user.user_metadata?.full_name && (
+                    <div style={{ fontSize: '12px', color: 'var(--color-gray-500)', fontFamily: 'var(--font-secondary)' }}>{user.email}</div>
+                  )}
+                </div>
+                <button 
+                  onClick={handleLogout}
+                  style={{ 
+                    fontFamily: 'var(--font-secondary)', 
+                    fontSize: '13px', 
+                    fontWeight: '500',
+                    color: 'var(--color-gray-600)',
+                    padding: 'var(--space-sm) var(--space-md)',
+                    border: '1px solid var(--color-gray-200)',
+                    borderRadius: 'var(--space-sm)',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.target as HTMLElement).style.background = 'var(--color-gray-50)';
+                    (e.target as HTMLElement).style.borderColor = 'var(--color-gray-300)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.target as HTMLElement).style.background = 'transparent';
+                    (e.target as HTMLElement).style.borderColor = 'var(--color-gray-200)';
+                  }}
+                >
+                  👋 Sign Out
+                </button>
+              </div>
+            )}
+          </header>
+
+          <div className="people-search">
+            <input
+              type="text"
+              placeholder="🔍 Search people..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          {filteredPeople.length === 0 && !searchTerm ? (
+            <div className="empty-state">
+              <div className="empty-state-emoji">🤲</div>
+              <h3 className="empty-state-title">No people yet</h3>
+              <p className="empty-state-subtitle">
+                Add your first team member or stakeholder to get started
+              </p>
+              <Link href="/people/new" className="add-person-button">
+                🤲 Add Your First Person
+              </Link>
+            </div>
+          ) : searchTerm && filteredPeople.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-emoji">🔍</div>
+              <h3 className="empty-state-title">No people found</h3>
+              <p className="empty-state-subtitle">
                 Try adjusting your search terms
               </p>
             </div>
+          ) : (
+            <div>
+              {/* General Management Assistant - Always show at top when not searching */}
+              {!searchTerm && (
+                <Link href="/people/general" className="person-item person-item--special">
+                  <div className="person-content">
+                    <div className="person-emoji">🤲</div>
+                    <div className="person-details">
+                      <div className="person-name">General</div>
+                      <div className="person-role">Management coaching and strategic advice</div>
+                    </div>
+                    <div className="person-meta">
+                      <div>Management Assistant</div>
+                      <div>Always available</div>
+                    </div>
+                  </div>
+                </Link>
+              )}
+
+              {/* Team Members */}
+              {filteredPeople.map(person => (
+                <Link key={person.id} href={`/people/${person.id}`} className="person-item">
+                  <div className="person-content">
+                    <div className="person-emoji">
+                      {getRelationshipEmoji(person.relationship_type || 'peer')}
+                    </div>
+                    <div className="person-details">
+                      <div className="person-name">{person.name}</div>
+                      <div className="person-role">
+                        {person.role || getRelationshipLabel(person.relationship_type || 'peer')}
+                      </div>
+                    </div>
+                    <div className="person-meta">
+                      <div>{getRelationshipLabel(person.relationship_type || 'peer')}</div>
+                      <div>{new Date(person.updated_at).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
           )}
-          
-          {/* Regular people list */}
-          {filteredPeople.map((person) => (
-            <Link 
-              key={person.id} 
-              href={`/people/${person.id}`}
-              className="block"
-            >
-              <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="text-2xl">
-                      {getRelationshipEmoji(person.relationship_type)}
-                    </div>
-                    <div>
-                      <div className="font-medium-bold text-gray-900">
-                        {person.name}
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        {person.role || 'No role specified'}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-500 mb-1">
-                      {getRelationshipLabel(person.relationship_type)}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      Added {new Date(person.created_at).toLocaleDateString()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Link>
-          ))}
+
+
         </div>
-      )}
+      </main>
     </div>
   );
 }

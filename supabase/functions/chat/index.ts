@@ -6,6 +6,8 @@ import { VectorService } from '../_shared/vector-service.ts'
 import { buildEnhancedSystemPrompt } from '../_shared/prompt-engineering.ts'
 import { OnboardingService } from '../_shared/onboarding-service.ts'
 import { getOnboardingPrompt } from '../_shared/onboarding-prompts.ts'
+import { detectNewPeopleInMessage } from '../_shared/enhanced-person-detection-safe.ts'
+import { analyzeProfileCompleteness, shouldPromptForCompletion } from '../_shared/profile-completeness.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -138,11 +140,18 @@ serve(async (req) => {
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
+      console.error('Auth error in edge function:', authError)
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+    
+    console.log('Edge function auth context:', {
+      user_id: user.id,
+      user_email: user.email,
+      auth_header_present: !!req.headers.get('Authorization')
+    })
 
     // Parse request
     const { person_id, message: userMessage }: ChatRequest = await req.json()
@@ -230,12 +239,66 @@ serve(async (req) => {
     const conversationHistory = await getMessages(person_id, supabase)
 
     // Save user message
-    const userMessageRecord = await createMessage({
+    console.log('Attempting to create message with data:', {
       person_id,
-      content: userMessage,
+      content: userMessage.substring(0, 50) + '...',
       is_user: true,
-      user_id: user.id
-    }, supabase)
+      user_id: user.id,
+      auth_uid: user.id
+    })
+    
+    let userMessageRecord;
+    try {
+      userMessageRecord = await createMessage({
+        person_id,
+        content: userMessage,
+        is_user: true,
+        user_id: user.id
+      }, supabase)
+      console.log('Message created successfully:', userMessageRecord.id)
+    } catch (messageError) {
+      console.error('Failed to create user message:', messageError)
+      console.log('Debug info - User ID:', user.id)
+      console.log('Debug info - Person ID:', person_id)
+      console.log('Debug info - Auth UID from context:', user.id)
+      
+      // Try to check if the user can access their people
+      try {
+        const { data: userPeople, error: peopleError } = await supabase
+          .from('people')
+          .select('id, name')
+          .eq('user_id', user.id)
+        console.log('User people check:', { userPeople, peopleError })
+      } catch (peopleCheckError) {
+        console.log('People check failed:', peopleCheckError)
+      }
+      
+      // Check auth context directly
+      try {
+        const { data: authCheck } = await supabase.rpc('auth.uid')
+        console.log('Direct auth.uid() check:', authCheck)
+      } catch (authCheckError) {
+        console.log('Auth check failed:', authCheckError)
+      }
+      
+      // Try a simple test insert to see the exact error
+      try {
+        const { data: testInsert, error: testError } = await supabase
+          .from('messages')
+          .insert({
+            person_id: 'general',
+            content: 'Test message',
+            is_user: true,
+            user_id: user.id
+          })
+          .select()
+        console.log('Test insert result:', { testInsert, testError })
+      } catch (testInsertError) {
+        console.log('Test insert failed:', testInsertError)
+      }
+      
+      throw messageError
+    }
 
     // Build enhanced management context with conversational intelligence
     const startTime = Date.now()
@@ -257,6 +320,49 @@ serve(async (req) => {
       .slice(-10) // Only use last 10 messages for context
       .map((msg: Message) => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
       .join('\n')
+
+    // Check if profile completion should be prompted
+    let profilePrompt = null
+    if (person_id !== 'general') {
+      try {
+        // Get person details with profile fields
+        const { data: personData } = await supabase
+          .from('people')
+          .select('*')
+          .eq('id', person_id)
+          .eq('user_id', user.id)
+          .single();
+
+        if (personData) {
+          // Get conversation count
+          const { count: conversationCount } = await supabase
+            .from('messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('person_id', person_id)
+            .eq('is_user', true);
+
+          // Analyze if we should prompt for profile completion
+          const completeness = analyzeProfileCompleteness(personData);
+          const shouldPrompt = shouldPromptForCompletion(
+            personData,
+            conversationCount || 0,
+            personData.last_profile_prompt
+          );
+
+          if (shouldPrompt && completeness.suggestions.length > 0) {
+            profilePrompt = completeness.suggestions[0];
+            
+            // Update last prompt date
+            await supabase
+              .from('people')
+              .update({ last_profile_prompt: new Date().toISOString() })
+              .eq('id', person_id);
+          }
+        }
+      } catch (error) {
+        console.error('Profile completion check failed:', error);
+      }
+    }
 
     // Choose system prompt based on onboarding state
     let systemPrompt: string
@@ -310,6 +416,18 @@ serve(async (req) => {
         const enhancedContext = formatContextForPrompt(managementContext, person_id, userMessage)
         systemPrompt = baseSystemPrompt.replace('{management_context}', enhancedContext)
       }
+    }
+
+    // Modify system prompt to include profile completion prompt if needed
+    if (profilePrompt) {
+      const profilePromptText = `
+
+PROFILE COMPLETION PROMPT:
+After providing your main response, gently ask: "${profilePrompt.prompt}"
+
+This will help you give better, more personalized advice in future conversations. Keep the prompt natural and conversational - don't make it feel like a form to fill out.`;
+
+      systemPrompt = `${systemPrompt}${profilePromptText}`;
     }
 
     // Call Claude API with retry logic
@@ -382,12 +500,45 @@ serve(async (req) => {
       'assistant'
     ).catch(console.error)
 
-    // Return response in same format as current client
-    return new Response(JSON.stringify({
+    // Detect new people mentioned in the user message
+    let personDetection = null
+    try {
+      // Get existing people names
+      const { data: existingPeople } = await supabase
+        .from('people')
+        .select('name')
+        .eq('user_id', user.id)
+      
+      const existingNames = existingPeople?.map(p => p.name) || []
+      
+      // Detect new people in the message
+      const detectionResult = await detectNewPeopleInMessage(userMessage, existingNames)
+      
+      if (detectionResult.hasNewPeople) {
+        personDetection = detectionResult
+      }
+    } catch (detectionError) {
+      console.error('Person detection failed:', detectionError)
+      // Don't fail the whole request if detection fails
+    }
+
+    // Return response with person detection and profile completion results
+    const responseData: any = {
       userMessage: userMessageRecord,
       assistantMessage,
+      personDetection,
       shouldRetry: claudeResponse.includes('🤚') || claudeResponse.includes('🤷') || claudeResponse.includes('🤔')
-    }), {
+    };
+
+    if (profilePrompt) {
+      responseData.profilePrompt = {
+        field: profilePrompt.field,
+        prompt: profilePrompt.prompt,
+        examples: profilePrompt.examples
+      };
+    }
+
+    return new Response(JSON.stringify(responseData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
 
