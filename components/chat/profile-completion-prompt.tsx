@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import type { Person } from '@/types/database'
 
 interface ProfileCompletionPromptProps {
   personId: string;
@@ -13,6 +14,77 @@ interface ProfileCompletionPromptProps {
   };
   onComplete: (field: string, value: string) => void;
   onDismiss: () => void;
+}
+
+interface ProfileCompletenessProps {
+  person: Person;
+  showPercentage?: boolean;
+}
+
+interface PersonSetupChatHeaderProps {
+  person: Person;
+  chatId: string;
+  onEditProfile: () => void;
+}
+
+// Profile completeness indicator component
+export function ProfileCompleteness({ person, showPercentage = true }: ProfileCompletenessProps) {
+  const requiredFields = ['role', 'relationship_type'];
+  const optionalFields = ['team', 'location', 'notes'];
+  const allFields = [...requiredFields, ...optionalFields];
+  
+  const completedFields = allFields.filter(field => {
+    const value = person[field as keyof Person];
+    return value !== null && value !== undefined && value !== '';
+  });
+  
+  const percentage = Math.round((completedFields.length / allFields.length) * 100);
+  const isComplete = requiredFields.every(field => {
+    const value = person[field as keyof Person];
+    return value !== null && value !== undefined && value !== '';
+  });
+  
+  return (
+    <div className="profile-completeness">
+      {showPercentage && (
+        <span className={`percentage ${isComplete ? 'complete' : 'incomplete'}`}>
+          {percentage}% complete
+        </span>
+      )}
+      <div className="progress-bar">
+        <div 
+          className={`progress ${isComplete ? 'complete' : 'incomplete'}`}
+          style={{width: `${percentage}%`}}
+        />
+      </div>
+    </div>
+  );
+}
+
+// Enhanced chat header for person setup chats
+export function PersonSetupChatHeader({ person, chatId, onEditProfile }: PersonSetupChatHeaderProps) {
+  return (
+    <div className="person-setup-chat-header">
+      <div className="person-info">
+        <h2 className="person-name">{person.name}</h2>
+        <div className="person-details">
+          {person.role && <span className="person-role">{person.role}</span>}
+          {person.team && <span className="person-team">at {person.team}</span>}
+        </div>
+        <ProfileCompleteness person={person} />
+      </div>
+      
+      <div className="header-actions">
+        <button 
+          onClick={onEditProfile}
+          className="edit-profile-btn"
+          title="Edit profile details"
+        >
+          ✏️ Edit Profile
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function ProfileCompletionPrompt({
@@ -58,10 +130,14 @@ export default function ProfileCompletionPrompt({
   return (
     <div className="profile-completion-prompt">
       <div className="profile-completion-header">
-        <span className="profile-completion-emoji">📝</span>
+        <div className="profile-completion-emoji">💡</div>
         <div className="profile-completion-content">
-          <h3 className="profile-completion-title">Help me understand {personName} better</h3>
-          <p className="profile-completion-question">{prompt.prompt}</p>
+          <div className="profile-completion-title">
+            Complete {personName}'s Profile
+          </div>
+          <div className="profile-completion-question">
+            {prompt.prompt}
+          </div>
         </div>
       </div>
 
@@ -69,14 +145,16 @@ export default function ProfileCompletionPrompt({
         <textarea
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="Tell me more..."
+          placeholder="Enter your response..."
           className="profile-completion-textarea"
           rows={3}
         />
 
         {prompt.examples && prompt.examples.length > 0 && (
           <div className="profile-completion-examples">
-            <span className="profile-completion-examples-label">Examples:</span>
+            <label className="profile-completion-examples-label">
+              Quick options:
+            </label>
             <div className="profile-completion-examples-list">
               {prompt.examples.map((example, index) => (
                 <button
@@ -96,14 +174,14 @@ export default function ProfileCompletionPrompt({
       <div className="profile-completion-actions">
         <button
           onClick={onDismiss}
-          className="profile-completion-btn profile-completion-btn--secondary"
           disabled={isSubmitting}
+          className="profile-completion-btn profile-completion-btn--secondary"
         >
           Skip for now
         </button>
         <button
           onClick={handleSubmit}
-          disabled={!value.trim() || isSubmitting}
+          disabled={isSubmitting || !value.trim()}
           className="profile-completion-btn profile-completion-btn--primary"
         >
           {isSubmitting ? 'Saving...' : 'Save'}

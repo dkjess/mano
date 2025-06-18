@@ -4,12 +4,14 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { usePeople } from '@/lib/contexts/people-context';
 import Link from 'next/link';
 
 type Step = 'name' | 'role' | 'relationship' | 'context' | 'complete';
 
 export default function NewPersonPage() {
   const router = useRouter();
+  const { addPerson } = usePeople();
   const [step, setStep] = useState<Step>('name');
   const [formData, setFormData] = useState({
     name: '',
@@ -37,6 +39,9 @@ export default function NewPersonPage() {
       const data = await response.json();
       
       if (response.ok) {
+        // Add person to context to avoid refetching
+        addPerson(data.person);
+        
         // If they provided context, start a conversation
         if (formData.context.trim()) {
           await fetch('/api/chat', {
@@ -264,7 +269,7 @@ export default function NewPersonPage() {
       <div className="w-full">
         <div className="bg-white rounded-lg p-8 shadow-sm border border-gray-200">
           <div className="flex items-center justify-between mb-8">
-            <Link href="/people" className="text-gray-400 hover:text-gray-600">
+            <Link href="/people/general" className="text-gray-400 hover:text-gray-600">
               ✕
             </Link>
             <div className="text-sm text-gray-500">

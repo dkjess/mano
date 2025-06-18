@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import { usePeople } from '@/lib/contexts/people-context';
 import type { Person } from '@/types/database';
 
 export default function PeoplePage() {
-  const [people, setPeople] = useState<Person[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { people, isLoading } = usePeople(); // Use context instead of local state
   const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState<any>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -16,25 +16,12 @@ export default function PeoplePage() {
 
   useEffect(() => {
     checkUser();
-    fetchPeople();
   }, []);
 
   const checkUser = async () => {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     setUser(user);
-  };
-
-  const fetchPeople = async () => {
-    try {
-      const response = await fetch('/api/people');
-      const data = await response.json();
-      setPeople(data.people || []);
-    } catch (error) {
-      console.error('Error fetching people:', error);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleLogout = async () => {
@@ -80,7 +67,7 @@ export default function PeoplePage() {
     setMobileMenuOpen(false);
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="loading-state">
         <div className="loading-emoji">🤲</div>

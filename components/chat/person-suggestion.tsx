@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DetectedPerson } from '@/lib/person-detection'
 
@@ -10,16 +11,74 @@ interface PersonSuggestionProps {
   onDismiss: () => void;
 }
 
+// Simple name input component for quick person creation
+function SimpleNamePrompt({ 
+  suggestedName = "", 
+  onConfirm, 
+  onCancel 
+}: { 
+  suggestedName?: string; 
+  onConfirm: (name: string) => void; 
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(suggestedName);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (name.trim()) {
+      onConfirm(name.trim());
+    }
+  };
+
+  return (
+    <div className="person-suggestion">
+      <div className="person-suggestion-content">
+        <span className="person-suggestion-emoji">👤</span>
+        <div className="person-suggestion-text">
+          <form onSubmit={handleSubmit} className="inline-prompt">
+            <input 
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Person's name"
+              className="person-name-input"
+              autoFocus
+            />
+            <button 
+              type="submit"
+              disabled={!name.trim()}
+              className="person-suggestion-btn person-suggestion-btn--primary"
+            >
+              Add Person
+            </button>
+          </form>
+        </div>
+      </div>
+      
+      <div className="person-suggestion-actions">
+        <button
+          onClick={onCancel}
+          className="person-suggestion-btn person-suggestion-btn--dismiss"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function PersonSuggestion({ 
   detectedPeople, 
   onPersonAdded, 
   onDismiss 
 }: PersonSuggestionProps) {
-  const [isAdding, setIsAdding] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const router = useRouter();
   const supabase = createClient();
 
-  const handleAddPerson = async (detectedPerson: DetectedPerson) => {
-    setIsAdding(detectedPerson.name);
+  // Create a new person and start conversational profiling
+  const createPersonProfileChat = async (personName: string) => {
+    setIsCreating(true);
     
     try {
       // Get the current user
@@ -29,86 +88,64 @@ export default function PersonSuggestion({
         throw new Error('User not authenticated');
       }
 
-      const { data, error } = await supabase
+      // Create the person with minimal data
+      const { data: person, error: personError } = await supabase
         .from('people')
         .insert({
-          name: detectedPerson.name,
-          role: detectedPerson.role || null,
-          relationship_type: detectedPerson.relationshipType || 'peer',
+          name: personName,
+          role: null,
+          relationship_type: 'peer', // Default, will be updated through conversation
           user_id: user.id
         })
         .select()
         .single();
 
-      if (error) throw error;
+      if (personError) throw personError;
 
-      onPersonAdded(data);
+      // Send initial system message to start profiling conversation
+      const initialMessage = generateInitialProfileMessage(personName);
+      
+      const { error: messageError } = await supabase
+        .from('messages')
+        .insert({
+          person_id: person.id,
+          content: initialMessage,
+          is_user: false,
+          user_id: user.id
+        });
+
+      if (messageError) throw messageError;
+
+      // Notify parent component
+      onPersonAdded(person);
+      
+      // Navigate to the new person's chat to continue profiling
+      router.push(`/people/${person.id}`);
+      
     } catch (error) {
-      console.error('Error adding person:', error);
-      alert('Failed to add person. Please try again.');
+      console.error('Error creating person profile chat:', error);
+      alert('Failed to create person. Please try again.');
     } finally {
-      setIsAdding(null);
+      setIsCreating(false);
     }
+  };
+
+  // Generate initial profiling message
+  const generateInitialProfileMessage = (personName: string): string => {
+    return `Great! I've added ${personName} to your team. Let's set up their profile so I can provide better guidance about your interactions.
+
+What's ${personName}'s role or job title?`;
   };
 
   if (detectedPeople.length === 0) return null;
 
   const primaryPerson = detectedPeople[0];
-  const hasMultiple = detectedPeople.length > 1;
 
   return (
-    <div className="person-suggestion">
-      <div className="person-suggestion-content">
-        <span className="person-suggestion-emoji">👤</span>
-        <div className="person-suggestion-text">
-          <span className="person-suggestion-message">
-            Add <strong>{primaryPerson.name}</strong>
-            {primaryPerson.role && ` (${primaryPerson.role})`}
-            {hasMultiple && ` and ${detectedPeople.length - 1} other${detectedPeople.length > 2 ? 's' : ''}`}
-            {' '}to your team?
-          </span>
-        </div>
-      </div>
-      
-      <div className="person-suggestion-actions">
-        {hasMultiple ? (
-          <>
-            <button
-              onClick={() => handleAddPerson(primaryPerson)}
-              disabled={isAdding !== null}
-              className="person-suggestion-btn person-suggestion-btn--primary"
-            >
-              {isAdding === primaryPerson.name ? 'Adding...' : `Add ${primaryPerson.name}`}
-            </button>
-            <button
-              onClick={() => {
-                // TODO: Show expanded view for multiple people
-                console.log('Show all detected people:', detectedPeople);
-              }}
-              disabled={isAdding !== null}
-              className="person-suggestion-btn person-suggestion-btn--secondary"
-            >
-              Add All ({detectedPeople.length})
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={() => handleAddPerson(primaryPerson)}
-            disabled={isAdding !== null}
-            className="person-suggestion-btn person-suggestion-btn--primary"
-          >
-            {isAdding === primaryPerson.name ? 'Adding...' : 'Add'}
-          </button>
-        )}
-        
-        <button
-          onClick={onDismiss}
-          disabled={isAdding !== null}
-          className="person-suggestion-btn person-suggestion-btn--dismiss"
-        >
-          ×
-        </button>
-      </div>
-    </div>
+    <SimpleNamePrompt
+      suggestedName={primaryPerson.name}
+      onConfirm={createPersonProfileChat}
+      onCancel={onDismiss}
+    />
   );
 } 

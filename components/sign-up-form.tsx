@@ -39,7 +39,7 @@ export function SignUpForm({
         password,
       });
       if (error) throw error;
-      router.push("/people");
+      router.push("/people/general");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -57,7 +57,7 @@ export function SignUpForm({
         provider: 'google',
         options: {
           scopes: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly',
-          redirectTo: `${window.location.origin}/auth/callback?redirect_to=/people`
+          redirectTo: `${window.location.origin}/auth/callback?redirect_to=/people/general`
         }
       });
       if (error) throw error;

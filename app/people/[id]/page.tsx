@@ -7,9 +7,14 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Person, Message } from '@/types/database';
 import PersonSuggestion from '@/components/chat/person-suggestion';
-import ProfileCompletionPrompt from '@/components/chat/profile-completion-prompt';
+import ProfileCompletionPrompt, { PersonSetupChatHeader } from '@/components/chat/profile-completion-prompt';
+import ProfileEditForm from '@/components/profile-edit-form';
+import PersonEditMenu from '@/components/person-edit-menu';
 import { PersonDetectionResult } from '@/lib/person-detection';
 import { createClient } from '@/lib/supabase/client';
+import { usePeople } from '@/lib/contexts/people-context';
+import { useMessages } from '@/lib/hooks/use-messages';
+
 
 interface StagedFile {
   file: File;
@@ -21,58 +26,51 @@ export default function PersonDetailPage() {
   const params = useParams();
   const personId = params.id as string;
   
+  // Use context and hooks instead of local state
+  const { people, getPerson, updatePerson, addPerson } = usePeople();
+  const { messages, isLoading: messagesLoading, addMessage } = useMessages(personId);
+  
   const [person, setPerson] = useState<Person | null>(null);
-  const [people, setPeople] = useState<Person[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Only for initial person setup
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [retryData, setRetryData] = useState<{message: string, shouldShow: boolean} | null>(null);
   const [showMarkdownHelp, setShowMarkdownHelp] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
   const [processingFile, setProcessingFile] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [personSuggestion, setPersonSuggestion] = useState<PersonDetectionResult | null>(null);
   const [profilePrompt, setProfilePrompt] = useState<any>(null);
+  const [showProfileEditForm, setShowProfileEditForm] = useState(false);
+  const [showPersonEditMenu, setShowPersonEditMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingAreaRef = useRef<HTMLDivElement>(null);
 
+  // Setup person when personId or people change
   useEffect(() => {
-    fetchPersonAndMessages();
-    fetchAllPeople();
-  }, [personId]);
-
-  // Set up real-time subscription for people changes
-  useEffect(() => {
-    const supabase = createClient();
-    
-    const channel = supabase
-      .channel('people_changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'people'
-        }, 
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setPeople(prev => [...prev, payload.new as Person]);
-          } else if (payload.eventType === 'UPDATE') {
-            setPeople(prev => prev.map(p => 
-              p.id === payload.new.id ? payload.new as Person : p
-            ));
-          } else if (payload.eventType === 'DELETE') {
-            setPeople(prev => prev.filter(p => p.id !== payload.old.id));
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+    if (personId === 'general') {
+      setPerson({
+        id: 'general',
+        user_id: '', 
+        name: 'General',
+        role: 'Your Management Coach',
+        relationship_type: 'assistant',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+      setLoading(false);
+    } else if (people.length > 0) {
+      // Find the specific person from context
+      const foundPerson = getPerson(personId);
+      if (foundPerson) {
+        setPerson(foundPerson);
+      } else {
+        console.error('Person not found');
+      }
+      setLoading(false);
+    }
+  }, [personId, people, getPerson]);
 
   useEffect(() => {
     scrollToBottom();
@@ -98,63 +96,7 @@ export default function PersonDetailPage() {
     }
   };
 
-  const fetchPersonAndMessages = async () => {
-    try {
-      // Handle special case for 'general' assistant
-      if (personId === 'general') {
-        setPerson({
-          id: 'general',
-          user_id: '', 
-          name: 'General',
-          role: 'Your Management Coach',
-          relationship_type: 'assistant',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
 
-        // Fetch messages for general conversation
-        const messagesResponse = await fetch(`/api/messages?person_id=general`);
-        if (!messagesResponse.ok) {
-          console.error('Failed to fetch general messages:', messagesResponse.status);
-          setMessages([]);
-        } else {
-          const messagesData = await messagesResponse.json();
-          setMessages(messagesData.messages || []);
-        }
-      } else {
-        // Fetch person details
-        const peopleResponse = await fetch('/api/people');
-        const peopleData = await peopleResponse.json();
-        const foundPerson = peopleData.people?.find((p: Person) => p.id === personId);
-        
-        if (!foundPerson) {
-          console.error('Person not found');
-          return;
-        }
-        
-        setPerson(foundPerson);
-
-        // Fetch messages
-        const messagesResponse = await fetch(`/api/messages?person_id=${personId}`);
-        const messagesData = await messagesResponse.json();
-        setMessages(messagesData.messages || []);
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchAllPeople = async () => {
-    try {
-      const response = await fetch('/api/people');
-      const data = await response.json();
-      setPeople(data.people || []);
-    } catch (error) {
-      console.error('Error fetching people:', error);
-    }
-  };
 
   const sendMessage = async (e: React.FormEvent, retryMessage?: string) => {
     e.preventDefault();
@@ -224,7 +166,8 @@ export default function PersonDetailPage() {
       };
 
       // Add both messages to state
-      setMessages(prev => [...prev, userMessage, assistantMessage]);
+      addMessage(userMessage);
+      addMessage(assistantMessage);
       
       // Clear staged files after successful send
       setStagedFiles([]);
@@ -349,8 +292,8 @@ export default function PersonDetailPage() {
   };
 
   const handlePersonAdded = (newPerson: Person) => {
-    // Refresh people list
-    setPeople(prev => [...prev, newPerson]);
+    // Add person to context
+    addPerson(newPerson);
     
     // Clear suggestion
     setPersonSuggestion(null);
@@ -379,6 +322,54 @@ export default function PersonDetailPage() {
     setProfilePrompt(null);
   };
 
+  // Check if this is a profile setup conversation
+  const isProfileSetupConversation = () => {
+    if (messages.length === 0 || personId === 'general') return false;
+    
+    const firstMessage = messages[0];
+    return firstMessage.role === 'assistant' && (
+      firstMessage.content.includes("Let's set up their profile") ||
+      (firstMessage.content.includes("What's") && firstMessage.content.includes("role"))
+    );
+  };
+
+  // Handle profile edit form
+  const handleEditProfile = () => {
+    setShowProfileEditForm(true);
+  };
+
+  const handleProfileSaved = (updatedPerson: Person) => {
+    setPerson(updatedPerson);
+    setShowProfileEditForm(false);
+    
+    // Update the person in the context
+    updatePerson(updatedPerson);
+  };
+
+  const handleCloseProfileForm = () => {
+    setShowProfileEditForm(false);
+  };
+
+  // Handle person edit menu
+  const handleOpenPersonEditMenu = () => {
+    setShowPersonEditMenu(true);
+  };
+
+  const handleClosePersonEditMenu = () => {
+    setShowPersonEditMenu(false);
+  };
+
+  const handlePersonUpdated = (updatedPerson: Person) => {
+    setPerson(updatedPerson);
+    
+    // Update the person in the context
+    updatePerson(updatedPerson);
+  };
+
+  const handlePersonDeleted = () => {
+    // The menu will handle navigation, so we don't need to do anything here
+  };
+
   if (loading) {
     return (
       <div className="loading-state">
@@ -393,8 +384,8 @@ export default function PersonDetailPage() {
       <div className="empty-state">
         <div className="empty-state-emoji">🤷</div>
         <h3 className="empty-state-title">Person not found</h3>
-        <Link href="/people" className="add-person-button">
-          👈 Back to People
+        <Link href="/people/general" className="add-person-button">
+          👈 Back to General Chat
         </Link>
       </div>
     );
@@ -405,7 +396,7 @@ export default function PersonDetailPage() {
       {/* Mobile overlay */}
       <div 
         className={`mobile-overlay ${mobileMenuOpen ? 'active' : ''}`}
-        onClick={closeMobileMenu}
+        onClick={() => setMobileMenuOpen(false)}
       />
       
       <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
@@ -420,8 +411,8 @@ export default function PersonDetailPage() {
             <div className="nav-section-items">
               <Link 
                 href="/people/general" 
-                className={`nav-item nav-item--special ${personId === 'general' ? 'active' : ''}`}
-                onClick={closeMobileMenu}
+                className="nav-item nav-item--special"
+                onClick={() => setMobileMenuOpen(false)}
               >
                 <span className="nav-item-emoji">🤲</span>
                 <div className="nav-item-content">
@@ -435,20 +426,20 @@ export default function PersonDetailPage() {
           <section className="nav-section">
             <h2 className="nav-section-title">Your Team</h2>
             <div className="nav-section-items">
-              {people.map(p => (
+              {people.map(person => (
                 <Link 
-                  key={p.id} 
-                  href={`/people/${p.id}`} 
-                  className={`nav-item ${p.id === person.id ? 'active' : ''}`}
-                  onClick={closeMobileMenu}
+                  key={person.id} 
+                  href={`/people/${person.id}`} 
+                  className="nav-item" 
+                  onClick={() => setMobileMenuOpen(false)}
                 >
                   <span className="nav-item-emoji">
-                    {getRelationshipEmoji(p.relationship_type || 'peer')}
+                    {getRelationshipEmoji(person.relationship_type || 'peer')}
                   </span>
                   <div className="nav-item-content">
-                    <span className="nav-item-name">{p.name}</span>
+                    <span className="nav-item-name">{person.name}</span>
                     <span className="nav-item-subtitle">
-                      {p.role || getRelationshipLabel(p.relationship_type || 'peer')}
+                      {person.role || getRelationshipLabel(person.relationship_type || 'peer')}
                     </span>
                   </div>
                 </Link>
@@ -458,7 +449,11 @@ export default function PersonDetailPage() {
         </nav>
         
         <div className="nav-add-person">
-          <Link href="/people/new" className="add-person-nav-button" onClick={closeMobileMenu}>
+          <Link 
+            href="/people/new" 
+            className="add-person-nav-button" 
+            onClick={() => setMobileMenuOpen(false)}
+          >
             <span>🤲</span>
             <span>Add Person</span>
           </Link>
@@ -467,26 +462,41 @@ export default function PersonDetailPage() {
 
       <main className={`main-content ${mobileMenuOpen ? 'mobile-pushed' : ''}`}>
         <div className="conversation-container">
-          <header className="conversation-header">
-            <div className="conversation-header-content">
-              <h1 className="conversation-title">
-                {personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')} {person.name}
-              </h1>
-              <p className="conversation-subtitle">
-                {personId === 'general' 
-                  ? 'Management coaching and strategic advice' 
-                  : person.role || getRelationshipLabel(person.relationship_type || 'peer')
-                }
-              </p>
-            </div>
-            <button 
-              className="mobile-menu-button"
-              onClick={toggleMobileMenu}
-              aria-label="Toggle menu"
-            >
-              ☰
-            </button>
-          </header>
+          {isProfileSetupConversation() && person && personId !== 'general' ? (
+            <PersonSetupChatHeader
+              person={person}
+              chatId={personId}
+              onEditProfile={handleEditProfile}
+            />
+          ) : (
+            <header className="conversation-header">
+              <div 
+                className="conversation-header-content"
+                onClick={personId !== 'general' ? handleOpenPersonEditMenu : undefined}
+                style={{ 
+                  cursor: personId !== 'general' ? 'pointer' : 'default'
+                }}
+                title={personId !== 'general' ? 'Click to edit profile' : undefined}
+              >
+                <h1 className="conversation-title">
+                  {personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')} {person.name}
+                </h1>
+                <p className="conversation-subtitle">
+                  {personId === 'general' 
+                    ? 'Management coaching and strategic advice' 
+                    : person.role || getRelationshipLabel(person.relationship_type || 'peer')
+                  }
+                </p>
+              </div>
+              <button 
+                className="mobile-menu-button"
+                onClick={toggleMobileMenu}
+                aria-label="Toggle menu"
+              >
+                ☰
+              </button>
+            </header>
+          )}
 
           <div className="conversation-messages">
             {messages.length === 0 && !sending ? (
@@ -647,6 +657,26 @@ export default function PersonDetailPage() {
                 ✕
               </button>
             </div>
+          )}
+
+          {/* Profile Edit Form Modal */}
+          {showProfileEditForm && person && (
+            <ProfileEditForm
+              person={person}
+              onSave={handleProfileSaved}
+              onClose={handleCloseProfileForm}
+            />
+          )}
+
+          {/* Person Edit Menu Modal */}
+          {showPersonEditMenu && person && personId !== 'general' && (
+            <PersonEditMenu
+              person={person}
+              chatId={personId}
+              onClose={handleClosePersonEditMenu}
+              onPersonUpdated={handlePersonUpdated}
+              onPersonDeleted={handlePersonDeleted}
+            />
           )}
         </div>
       </main>

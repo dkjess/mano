@@ -8,6 +8,15 @@ import { OnboardingService } from '../_shared/onboarding-service.ts'
 import { getOnboardingPrompt } from '../_shared/onboarding-prompts.ts'
 import { detectNewPeopleInMessage } from '../_shared/enhanced-person-detection-safe.ts'
 import { analyzeProfileCompleteness, shouldPromptForCompletion } from '../_shared/profile-completeness.ts'
+import { 
+  extractProfileData, 
+  getNextQuestion, 
+  generateCompletionMessage,
+  formatProfileUpdate,
+  isCorrection,
+  extractCorrection,
+  type PersonProfile
+} from '../_shared/profile-enhancement.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -35,6 +44,13 @@ interface Person {
   relationship_type: string;
   created_at: string;
   updated_at: string;
+  team?: string | null;
+  location?: string | null;
+  notes?: string | null;
+  communication_style?: string | null;
+  goals?: string | null;
+  strengths?: string | null;
+  challenges?: string | null;
 }
 
 // System prompts - copied from lib/claude.ts
@@ -88,6 +104,24 @@ Previous Conversation: {conversation_history}
 
 Respond in a warm, professional tone as a trusted management coach. Keep responses focused, practical, and actionable.`;
 
+const PROFILE_SETUP_PROMPT = `You are Mano, helping a manager set up a team member's profile through natural conversation.
+
+Your role in profile setup:
+- Ask one question at a time to gather profile information
+- Extract structured data from natural language responses  
+- Provide confirmations when information is updated
+- Guide the conversation toward completion
+- Be conversational and helpful, not robotic
+
+Current person: {name}
+Profile completion status: {completion_status}
+Next question to ask: {next_question}
+
+Previous conversation:
+{conversation_history}
+
+If the user provides profile information, acknowledge it and ask the next logical question. If they want to skip or finish, respect that choice. Keep the tone friendly and conversational.`;
+
 // Database functions - simplified versions for edge function
 async function getMessages(personId: string, supabase: any): Promise<Message[]> {
   const { data, error } = await supabase
@@ -115,6 +149,105 @@ async function createMessage(
     .select()
     .single();
 
+  if (error) throw error;
+  return data;
+}
+
+// Check if this is a profile setup conversation
+function isProfileSetupConversation(messages: Message[]): boolean {
+  if (messages.length === 0) return false;
+  
+  // Check if the first system message is about profile setup
+  const firstMessage = messages[0];
+  return !firstMessage.is_user && (
+    firstMessage.content.includes("Let's set up their profile") ||
+    firstMessage.content.includes("What's") && firstMessage.content.includes("role")
+  );
+}
+
+// Determine the current field being asked about in profile setup
+function getCurrentProfileField(messages: Message[]): string {
+  const lastAssistantMessage = messages
+    .filter(m => !m.is_user)
+    .pop();
+    
+  if (!lastAssistantMessage) return 'role';
+  
+  const content = lastAssistantMessage.content.toLowerCase();
+  
+  if (content.includes('role') || content.includes('job') || content.includes('title')) {
+    return 'role';
+  } else if (content.includes('company') || content.includes('team')) {
+    return 'company';
+  } else if (content.includes('relationship') || content.includes('know')) {
+    return 'relationship';
+  } else if (content.includes('location') || content.includes('based')) {
+    return 'location';
+  } else if (content.includes('details') || content.includes('remember')) {
+    return 'notes';
+  }
+  
+  return 'role'; // Default
+}
+
+// Update person profile with extracted data
+async function updatePersonProfile(
+  personId: string, 
+  extractedData: any, 
+  supabase: any
+): Promise<Person> {
+  const updateData: any = {};
+  
+  // Map extracted fields to database columns
+  const fieldMapping: Record<string, string> = {
+    'role': 'role',
+    'company': 'team',
+    'team': 'team',
+    'relationship': 'relationship_type',
+    'relationship_type': 'relationship_type',
+    'location': 'location',
+    'notes': 'notes',
+    'communication_style': 'communication_style',
+    'goals': 'goals',
+    'strengths': 'strengths',
+    'challenges': 'challenges'
+  };
+  
+  // Primary field
+  if (extractedData.primaryField && extractedData.extractedValue) {
+    const dbField = fieldMapping[extractedData.primaryField];
+    if (dbField) {
+      updateData[dbField] = extractedData.extractedValue;
+    }
+  }
+  
+  // Additional fields
+  if (extractedData.additionalFields) {
+    for (const field of extractedData.additionalFields) {
+      const dbField = fieldMapping[field.field];
+      if (dbField && field.value) {
+        updateData[dbField] = field.value;
+      }
+    }
+  }
+  
+  if (Object.keys(updateData).length === 0) {
+    // No updates to make, just return current person
+    const { data } = await supabase
+      .from('people')
+      .select('*')
+      .eq('id', personId)
+      .single();
+    return data;
+  }
+  
+  const { data, error } = await supabase
+    .from('people')
+    .update(updateData)
+    .eq('id', personId)
+    .select()
+    .single();
+    
   if (error) throw error;
   return data;
 }

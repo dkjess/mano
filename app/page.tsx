@@ -34,7 +34,7 @@ export default function HomePage() {
         router.push('/people/general')
       } else {
         // Existing user - go to people overview or last conversation
-        router.push('/people')
+        router.push('/people/general')
       }
     } catch (error) {
       console.error('Error checking user status:', error)

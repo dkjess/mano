@@ -18,12 +18,12 @@ export async function GET(request: NextRequest) {
       const isLocalEnv = process.env.NODE_ENV === "development";
       if (isLocalEnv) {
         // we can be sure that there is no load balancer in between, so no need to watch for X-Forwarded-Host
-        return NextResponse.redirect(`${origin}${redirectTo ?? "/people"}`);
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${redirectTo ?? "/people"}`);
-      } else {
-        return NextResponse.redirect(`${origin}${redirectTo ?? "/people"}`);
-      }
+            return NextResponse.redirect(`${origin}${redirectTo ?? "/people/general"}`);
+  } else if (forwardedHost) {
+    return NextResponse.redirect(`https://${forwardedHost}${redirectTo ?? "/people/general"}`);
+  } else {
+    return NextResponse.redirect(`${origin}${redirectTo ?? "/people/general"}`);
+  }
     }
   }
 
