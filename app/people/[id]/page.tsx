@@ -76,6 +76,22 @@ export default function PersonDetailPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingAreaRef = useRef<HTMLDivElement>(null); // Keep for retry functionality
 
+  // Reset component state when personId changes
+  useEffect(() => {
+    // Clear any pending operations
+    setSending(false);
+    setRetryData(null);
+    setShowMarkdownHelp(false);
+    setStagedFiles([]);
+    setProcessingFile(false);
+    setPersonSuggestion(null);
+    setProfilePrompt(null);
+    setShowProfileEditForm(false);
+    setShowPersonEditMenu(false);
+    clearStreamingMessage();
+    clearFiles();
+  }, [personId, clearStreamingMessage, clearFiles]);
+
   // Setup person when personId or people change
   useEffect(() => {
     if (personId === 'general') {
@@ -101,15 +117,24 @@ export default function PersonDetailPage() {
     }
   }, [personId, people, getPerson]);
 
+  // Auto-scroll to bottom when messages load or change
+  useEffect(() => {
+    // Small delay to ensure DOM is updated
+    const scrollTimer = setTimeout(() => {
+      scrollToBottom();
+    }, 100);
+
+    return () => clearTimeout(scrollTimer);
+  }, [messages, messagesLoading]);
+
+  // Auto-scroll during streaming and when sending
   useEffect(() => {
     scrollToBottom();
-  }, [messages, sending, streamingMessage]);
+  }, [sending, streamingMessage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
-
 
   // Enhanced send message function with real API streaming
   const handleSendMessage = async (content: string, dropzoneFiles?: DroppedFile[]) => {
@@ -455,7 +480,7 @@ export default function PersonDetailPage() {
             <div className="nav-section-items">
               <Link 
                 href="/people/general" 
-                className="nav-item nav-item--special"
+                className={`nav-item nav-item--special ${personId === 'general' ? 'active' : ''}`}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 <span className="nav-item-emoji">🤲</span>
@@ -474,7 +499,7 @@ export default function PersonDetailPage() {
                 <Link 
                   key={person.id} 
                   href={`/people/${person.id}`} 
-                  className="nav-item" 
+                  className={`nav-item ${personId === person.id ? 'active' : ''}`}
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   <span className="nav-item-emoji">
@@ -553,7 +578,15 @@ export default function PersonDetailPage() {
           )}
 
           <div className="conversation-messages">
-            {messages.length === 0 && !sending && !streamingMessage ? (
+            {/* Loading state for messages */}
+            {messagesLoading && messages.length === 0 && (
+              <div className="loading-state">
+                <div className="loading-emoji">🤲</div>
+                <div className="loading-text">Loading conversation...</div>
+              </div>
+            )}
+
+            {messages.length === 0 && !sending && !streamingMessage && !messagesLoading ? (
               <div className="empty-state">
                 <div className="empty-state-emoji">💬</div>
                 <h3 className="empty-state-title">Start the conversation</h3>
