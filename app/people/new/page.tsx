@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,17 +21,57 @@ export default function NewPersonPage() {
   });
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async () => {
-    if (!formData.name || !formData.relationship_type) return;
+  // Reset form when component mounts to prevent stale data
+  useEffect(() => {
+    setFormData({
+      name: '',
+      role: '',
+      relationship_type: '',
+      context: ''
+    });
+    setStep('name');
+    setLoading(false);
+  }, []);
+
+  const createPerson = async (includeContext: boolean = true) => {
+    if (!formData.name || !formData.relationship_type || loading) return;
+    
+    // Additional validation to prevent corrupted submissions
+    const trimmedName = formData.name.trim();
+    const trimmedRole = formData.role.trim();
+    
+    // Prevent submission with UI text fragments or invalid names
+    if (trimmedName.length < 2 || 
+        ['And', 'and', 'in', 'In', 'is', 'Is', 'your', 'Your'].includes(trimmedName) ||
+        trimmedName.includes('is your') ||
+        trimmedName.includes('And ')) {
+      console.error('Invalid name detected:', trimmedName);
+      alert('Please enter a valid name (at least 2 characters, not UI text)');
+      return;
+    }
+    
+    // Prevent submission with UI text fragments in role
+    if (trimmedRole && ['in', 'In', 'is', 'Is', 'your', 'Your', 'And', 'and'].includes(trimmedRole)) {
+      console.error('Invalid role detected:', trimmedRole);
+      alert('Please enter a valid role or leave it empty');
+      return;
+    }
     
     setLoading(true);
+    
+    console.log('Creating person with validated data:', {
+      name: trimmedName,
+      role: trimmedRole || null,
+      relationship_type: formData.relationship_type
+    });
+    
     try {
       const response = await fetch('/api/people', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: formData.name,
-          role: formData.role || null,
+          name: trimmedName,
+          role: trimmedRole || null,
           relationship_type: formData.relationship_type
         })
       });
@@ -42,8 +82,8 @@ export default function NewPersonPage() {
         // Add person to context to avoid refetching
         addPerson(data.person);
         
-        // If they provided context, start a conversation
-        if (formData.context.trim()) {
+        // If they provided context and want to include it, start a conversation
+        if (includeContext && formData.context.trim()) {
           await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -60,13 +100,18 @@ export default function NewPersonPage() {
         }, 2000);
       } else {
         console.error('Error creating person:', data.error);
+        alert('Failed to create person: ' + (data.error || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error:', error);
+      alert('Failed to create person. Please try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  const handleSubmitWithContext = () => createPerson(true);
+  const handleSkipContext = () => createPerson(false);
 
   const relationshipOptions = [
     { value: 'direct_report', label: 'Direct Report', emoji: '👥' },
@@ -227,7 +272,7 @@ export default function NewPersonPage() {
                 👈 Back
               </Button>
               <Button 
-                onClick={handleSubmit}
+                onClick={handleSubmitWithContext}
                 disabled={loading}
                 className="font-medium-bold"
               >
@@ -237,7 +282,7 @@ export default function NewPersonPage() {
             
             <div className="text-center">
               <Button 
-                onClick={handleSubmit}
+                onClick={handleSkipContext}
                 variant="ghost"
                 disabled={loading}
                 className="text-sm text-gray-500"

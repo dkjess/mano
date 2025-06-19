@@ -105,7 +105,12 @@ export default function PeoplePage() {
           </section>
           
           <section className="nav-section">
-            <h2 className="nav-section-title">Your Team</h2>
+            <div className="nav-section-header">
+              <h2 className="nav-section-title">Your Team</h2>
+              <Link href="/people/new" className="add-person-button">
+                +
+              </Link>
+            </div>
             <div className="nav-section-items">
               {people.map(person => (
                 <Link key={person.id} href={`/people/${person.id}`} className="nav-item" onClick={closeMobileMenu}>
@@ -118,6 +123,14 @@ export default function PeoplePage() {
                   </div>
                 </Link>
               ))}
+              
+              {people.length === 0 && (
+                <div className="empty-people">
+                  <Link href="/people/new" className="create-first-person" onClick={closeMobileMenu}>
+                    🤲 Add your first team member
+                  </Link>
+                </div>
+              )}
             </div>
           </section>
         </nav>
