@@ -14,6 +14,10 @@ import { PersonDetectionResult } from '@/lib/person-detection';
 import { createClient } from '@/lib/supabase/client';
 import { usePeople } from '@/lib/contexts/people-context';
 import { useMessages } from '@/lib/hooks/use-messages';
+import { EnhancedChatInput } from '@/components/chat/EnhancedChatInput';
+import { MessageBubble } from '@/components/chat/MessageBubble';
+import { useStreamingResponse } from '@/lib/hooks/useStreamingResponse';
+import { createMockStream } from '@/lib/api/streaming';
 
 
 interface StagedFile {
@@ -30,8 +34,15 @@ export default function PersonDetailPage() {
   const { people, getPerson, updatePerson, addPerson } = usePeople();
   const { messages, isLoading: messagesLoading, addMessage } = useMessages(personId);
   
+  // Add streaming support
+  const {
+    streamingMessage,
+    startStreaming,
+    clearStreamingMessage
+  } = useStreamingResponse();
+  
   const [person, setPerson] = useState<Person | null>(null);
-  const [newMessage, setNewMessage] = useState('');
+  const [newMessage, setNewMessage] = useState(''); // Keep for retry functionality
   const [loading, setLoading] = useState(false); // Only for initial person setup
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -45,7 +56,7 @@ export default function PersonDetailPage() {
   const [showProfileEditForm, setShowProfileEditForm] = useState(false);
   const [showPersonEditMenu, setShowPersonEditMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const typingAreaRef = useRef<HTMLDivElement>(null);
+  const typingAreaRef = useRef<HTMLDivElement>(null); // Keep for retry functionality
 
   // Setup person when personId or people change
   useEffect(() => {
@@ -74,124 +85,84 @@ export default function PersonDetailPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, sending]);
-
-  useEffect(() => {
-    updateSendButton();
-  }, [newMessage, stagedFiles]);
+  }, [messages, sending, streamingMessage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const updateSendButton = () => {
-    const hasContent = newMessage.trim().length > 0 || stagedFiles.length > 0;
-    const sendButton = document.getElementById('sendButton');
-    if (sendButton) {
-      if (hasContent) {
-        sendButton.classList.add('visible');
-      } else {
-        sendButton.classList.remove('visible');
-      }
-    }
-  };
 
 
-
-  const sendMessage = async (e: React.FormEvent, retryMessage?: string) => {
-    e.preventDefault();
-    const messageText = retryMessage || newMessage.trim();
-    
-    // Don't send if no message and no files
-    if (!messageText && stagedFiles.length === 0) return;
-    
-    if (sending) return;
+  // Enhanced send message function with streaming support
+  const handleSendMessage = async (content: string) => {
+    // Don't send if already processing
+    if (sending || streamingMessage?.isStreaming) return;
 
     setSending(true);
-    if (!retryMessage) {
-      setNewMessage('');
-      if (typingAreaRef.current) {
-        typingAreaRef.current.textContent = '';
-      }
-    }
     setRetryData(null);
 
     try {
       // Combine message with file contents
-      let combinedMessage = messageText;
+      let combinedMessage = content;
       
       if (stagedFiles.length > 0) {
         const fileContents = stagedFiles.map(staged => 
           `📎 **${staged.file.name}** (${(staged.file.size / 1024).toFixed(1)}KB)\n\n${staged.content}`
         ).join('\n\n---\n\n');
         
-        combinedMessage = messageText 
-          ? `${messageText}\n\n${fileContents}`
+        combinedMessage = content 
+          ? `${content}\n\n${fileContents}`
           : fileContents;
       }
 
-      // Use regular chat endpoint to get person detection results
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          person_id: personId,
-          message: combinedMessage
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-
-      const data = await response.json();
-      
-      // Add messages to the conversation
+      // Add user message immediately
       const userMessage: Message = {
-        id: data.userMessage.id,
+        id: `user-${Date.now()}`,
         person_id: personId,
         content: combinedMessage,
         role: 'user',
-        created_at: data.userMessage.created_at,
-        updated_at: data.userMessage.updated_at
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
-
-      const assistantMessage: Message = {
-        id: data.assistantMessage.id,
-        person_id: personId,
-        content: data.assistantMessage.content,
-        role: 'assistant',
-        created_at: data.assistantMessage.created_at,
-        updated_at: data.assistantMessage.updated_at
-      };
-
-      // Add both messages to state
       addMessage(userMessage);
-      addMessage(assistantMessage);
-      
-      // Clear staged files after successful send
+
+      // Clear staged files after sending
       setStagedFiles([]);
 
-      // Handle person detection
-      if (data.personDetection) {
-        setPersonSuggestion(data.personDetection);
-      }
-
-      // Handle profile completion prompt
-      if (data.profilePrompt) {
-        setProfilePrompt(data.profilePrompt);
-      }
-
-      // Handle retry logic if needed
-      if (data.shouldRetry) {
-        setRetryData({ message: messageText, shouldShow: true });
-      }
+      // Start streaming after a short delay (simulate Mano thinking)
+      setTimeout(async () => {
+        const streamingId = `streaming-${Date.now()}`;
+        
+        await startStreaming(streamingId, async () => {
+          // For now, use mock streaming to test the effect
+          // TODO: Replace with real API streaming
+          const mockResponse = `Thank you for your message about "${content}". I'm analyzing your request and will provide detailed guidance. This demonstrates the smooth character-by-character streaming effect that makes the conversation feel more natural and engaging.`;
+          return createMockStream(mockResponse, 6); // 6 words per second
+        });
+      }, 800); // 800ms thinking delay
 
     } catch (error) {
       console.error('Error sending message:', error);
-      setRetryData({ message: messageText, shouldShow: true });
+      setRetryData({ message: content, shouldShow: true });
     } finally {
       setSending(false);
+    }
+  };
+
+  // Keep the old sendMessage for retry functionality
+  const sendMessage = async (e: React.FormEvent, retryMessage?: string) => {
+    e.preventDefault();
+    const messageText = retryMessage || newMessage.trim();
+    
+    if (!messageText && stagedFiles.length === 0) return;
+    
+    await handleSendMessage(messageText);
+    
+    if (!retryMessage) {
+      setNewMessage('');
+      if (typingAreaRef.current) {
+        typingAreaRef.current.textContent = '';
+      }
     }
   };
 
@@ -499,7 +470,7 @@ export default function PersonDetailPage() {
           )}
 
           <div className="conversation-messages">
-            {messages.length === 0 && !sending ? (
+            {messages.length === 0 && !sending && !streamingMessage ? (
               <div className="empty-state">
                 <div className="empty-state-emoji">💬</div>
                 <h3 className="empty-state-title">Start the conversation</h3>
@@ -512,44 +483,51 @@ export default function PersonDetailPage() {
               </div>
             ) : (
               <div className="message-group">
+                {/* Render existing messages with new MessageBubble component */}
                 {messages.map((message, index) => (
-                  <div key={message.id || index}>
-                    {message.role === 'user' ? (
-                      <div className="message-user">
-                        <div className="message-user-label">You</div>
-                        <div className="message-user-content">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {message.content}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="message-assistant">
-                        <div className="message-assistant-emoji">
-                          {personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
-                        </div>
-                        <div className="message-assistant-content">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {message.content}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
-                    )}
-                    <div className="message-timestamp">
-                      {new Date(message.created_at).toLocaleString()}
-                    </div>
-                  </div>
+                  <MessageBubble
+                    key={message.id || index}
+                    content={message.content}
+                    isUser={message.role === 'user'}
+                    timestamp={new Date(message.created_at)}
+                    avatar={message.role === 'user' ? undefined : 
+                      (personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer'))
+                    }
+                  />
                 ))}
                 
+                {/* Show loading state when sending */}
                 {sending && (
-                  <div className="message-loading">
-                    <div className="message-loading-emoji">
-                      {personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
-                    </div>
-                    <div className="message-loading-dots">
-                      Thinking...
-                    </div>
-                  </div>
+                  <MessageBubble
+                    content=""
+                    isUser={false}
+                    isLoading={true}
+                    avatar={personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
+                  />
+                )}
+
+                {/* Show streaming message */}
+                {streamingMessage && (
+                  <MessageBubble
+                    content={streamingMessage.content}
+                    isUser={false}
+                    isStreaming={streamingMessage.isStreaming}
+                    timestamp={new Date()}
+                    avatar={personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
+                    onComplete={() => {
+                      // When streaming completes, add the final message to permanent state
+                      const finalMessage: Message = {
+                        id: `assistant-${Date.now()}`,
+                        person_id: personId,
+                        content: streamingMessage.content,
+                        role: 'assistant',
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                      };
+                      addMessage(finalMessage);
+                      clearStreamingMessage();
+                    }}
+                  />
                 )}
 
                 {personSuggestion && (
@@ -574,41 +552,16 @@ export default function PersonDetailPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className={`conversation-input ${mobileMenuOpen ? 'mobile-pushed' : ''}`}>
-            <div className="input-container">
-              <div
-                ref={typingAreaRef}
-                contentEditable
-                onInput={handleTypingInput}
-                onKeyDown={handleKeyDown}
-                className="input-field"
-                style={{ minHeight: '48px' }}
-                suppressContentEditableWarning={true}
-              />
-              {newMessage.trim().length === 0 && stagedFiles.length === 0 && (
-                <div style={{
-                  position: 'absolute',
-                  top: 'var(--space-md)',
-                  left: 0,
-                  color: 'var(--color-gray-400)',
-                  fontStyle: 'italic',
-                  pointerEvents: 'none',
-                  fontFamily: 'var(--font-secondary)',
-                  fontSize: '16px'
-                }}>
-                  Continue the conversation...
-                </div>
-              )}
-            </div>
-            
-            <button
-              id="sendButton"
-              onClick={sendMessage}
-              disabled={sending}
-              className="send-button"
-            >
-              {sending ? '⏳' : '→'}
-            </button>
+          {/* Enhanced Chat Input */}
+          <div className={mobileMenuOpen ? 'mobile-pushed' : ''}>
+            <EnhancedChatInput
+              onSend={handleSendMessage}
+              disabled={sending || streamingMessage?.isStreaming}
+              placeholder={personId === 'general' 
+                ? 'Ask for management guidance...' 
+                : `Message ${person?.name || 'Mano'}...`
+              }
+            />
           </div>
 
           {retryData?.shouldShow && (
