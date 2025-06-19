@@ -17,6 +17,9 @@ import { useMessages } from '@/lib/hooks/use-messages';
 import { EnhancedChatInput } from '@/components/chat/EnhancedChatInput';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { useStreamingResponse } from '@/lib/hooks/useStreamingResponse';
+import { useFileDropZone, DroppedFile } from '@/lib/hooks/useFileDropZone';
+import { ChatDropZone } from '@/components/chat/ChatDropZone';
+import { MessageFile } from '@/types/database';
 
 
 
@@ -40,6 +43,21 @@ export default function PersonDetailPage() {
     startStreaming,
     clearStreamingMessage
   } = useStreamingResponse();
+
+  // Add file drop zone support
+  const {
+    files,
+    isDragActive,
+    fileInputRef,
+    handleDragEnter,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+    handleFileInputChange,
+    removeFile: removeDroppedFile,
+    clearFiles,
+    openFileDialog
+  } = useFileDropZone();
   
   const [person, setPerson] = useState<Person | null>(null);
   const [newMessage, setNewMessage] = useState(''); // Keep for retry functionality
@@ -94,7 +112,7 @@ export default function PersonDetailPage() {
 
 
   // Enhanced send message function with real API streaming
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, dropzoneFiles?: DroppedFile[]) => {
     // Don't send if already processing
     if (sending || streamingMessage?.isStreaming) return;
 
@@ -102,9 +120,10 @@ export default function PersonDetailPage() {
     setRetryData(null);
 
     try {
-      // Combine message with file contents
+      // Combine message with file contents from both old and new systems
       let combinedMessage = content;
       
+      // Handle legacy staged files
       if (stagedFiles.length > 0) {
         const fileContents = stagedFiles.map(staged => 
           `📎 **${staged.file.name}** (${(staged.file.size / 1024).toFixed(1)}KB)\n\n${staged.content}`
@@ -115,27 +134,46 @@ export default function PersonDetailPage() {
           : fileContents;
       }
 
-      // Add user message immediately
-      const userMessage: Message = {
+      // Convert dropzone files to clean MessageFile format (don't add to message content)
+      const messageFiles = dropzoneFiles ? convertDroppedFilesToMessageFiles(dropzoneFiles) : [];
+
+      // For AI context, we still need file contents, but we'll process them separately
+      let aiContextFiles = '';
+      if (dropzoneFiles && dropzoneFiles.length > 0) {
+        const dropzoneContents = await Promise.all(
+          dropzoneFiles.map(async (droppedFile) => {
+            const content = droppedFile.type === 'image' 
+              ? `📷 **${droppedFile.file.name}** (Image, ${(droppedFile.file.size / 1024).toFixed(1)}KB)`
+              : await processFile(droppedFile.file);
+            return `${getFileIcon(droppedFile.file.name)} **${droppedFile.file.name}** (${(droppedFile.file.size / 1024).toFixed(1)}KB)\n\n${content}`;
+          })
+        );
+        aiContextFiles = '\n\n' + dropzoneContents.join('\n\n---\n\n');
+      }
+
+      // Create clean user message with separate text and files
+      const userMessage: Message & { files?: MessageFile[] } = {
         id: `user-${Date.now()}`,
         person_id: personId,
-        content: combinedMessage,
+        content: content, // Only the user's actual message text
         role: 'user',
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        files: messageFiles // Clean file attachments
       };
-      addMessage(userMessage);
+      addMessage(userMessage as Message);
 
-      // Clear staged files after sending
+      // Clear both file systems after sending
       setStagedFiles([]);
+      clearFiles();
 
-      // Call the real streaming API
+      // Call the real streaming API with combined message for AI context
       const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           person_id: personId,
-          message: combinedMessage
+          message: combinedMessage + aiContextFiles // Include file context for AI
         })
       });
 
@@ -229,6 +267,27 @@ export default function PersonDetailPage() {
     if (fileName.endsWith('.json')) return '🔧';
     if (fileName.endsWith('.csv')) return '📊';
     return '📎';
+  };
+
+  const getFileIconByType = (type: DroppedFile['type']): string => {
+    switch (type) {
+      case 'image': return '🖼️';
+      case 'transcript': return '📝';
+      case 'document': return '📄';
+      default: return '📎';
+    }
+  };
+
+  const convertDroppedFilesToMessageFiles = (droppedFiles: DroppedFile[]): MessageFile[] => {
+    return droppedFiles
+      .filter(file => file.type !== 'unknown') // Filter out unknown types
+      .map(file => ({
+        id: file.id,
+        name: file.file.name,
+        type: file.type as 'image' | 'transcript' | 'document', // Type assertion since we filtered unknown
+        size: file.file.size,
+        icon: getFileIconByType(file.type)
+      }));
   };
 
   const getRelationshipEmoji = (relationshipType: string) => {
@@ -446,7 +505,17 @@ export default function PersonDetailPage() {
       </aside>
 
       <main className={`main-content ${mobileMenuOpen ? 'mobile-pushed' : ''}`}>
-        <div className="conversation-container">
+        <ChatDropZone
+          isDragActive={isDragActive}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          fileInputRef={fileInputRef}
+          onFileInputChange={handleFileInputChange}
+          disabled={sending || streamingMessage?.isStreaming}
+        >
+          <div className="conversation-container">
           {isProfileSetupConversation() && person && personId !== 'general' ? (
             <PersonSetupChatHeader
               person={person}
@@ -503,6 +572,7 @@ export default function PersonDetailPage() {
                     key={message.id || index}
                     content={message.content}
                     isUser={message.role === 'user'}
+                    files={(message as any).files || []} // Pass files if they exist
                     timestamp={new Date(message.created_at)}
                     avatar={message.role === 'user' ? undefined : 
                       (personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer'))
@@ -575,6 +645,9 @@ export default function PersonDetailPage() {
                 ? 'Ask for management guidance...' 
                 : `Message ${person?.name || 'Mano'}...`
               }
+              files={files}
+              onRemoveFile={removeDroppedFile}
+              onOpenFileDialog={openFileDialog}
             />
           </div>
 
@@ -645,7 +718,8 @@ export default function PersonDetailPage() {
               onPersonDeleted={handlePersonDeleted}
             />
           )}
-        </div>
+          </div>
+        </ChatDropZone>
       </main>
     </div>
   );

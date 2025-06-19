@@ -2,8 +2,258 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getMessages, createMessage } from '@/lib/database';
 import { getChatCompletionStreaming } from '@/lib/claude';
-import { gatherManagementContext } from '@/lib/management-context';
+import { formatContextForPrompt, type ManagementContextData, type TeamContext, type PersonContext } from '@/lib/management-context';
 import type { Person } from '@/types/database';
+
+// Import the vector-enabled context system
+interface ManagementContext {
+  people: any[];
+  team_size: any;
+  recent_themes: any[];
+  current_challenges: any[];
+  conversation_patterns: any;
+  semantic_context?: any;
+}
+
+interface VectorSearchResult {
+  id: string;
+  content: string;
+  person_id: string;
+  message_type: string;
+  created_at: string;
+  similarity: number;
+  metadata: any;
+}
+
+class VectorService {
+  constructor(private supabase: any) {}
+
+  async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      const response = await fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input: text,
+          model: 'text-embedding-ada-002'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.data[0].embedding;
+    } catch (error) {
+      console.error('Error generating embedding:', error);
+      throw error;
+    }
+  }
+
+  async searchSimilarConversations(
+    userId: string,
+    query: string,
+    options: {
+      threshold?: number;
+      limit?: number;
+      personFilter?: string;
+    } = {}
+  ): Promise<VectorSearchResult[]> {
+    try {
+      const queryEmbedding = await this.generateEmbedding(query);
+
+      const { data, error } = await this.supabase
+        .rpc('match_conversation_embeddings', {
+          query_embedding: queryEmbedding,
+          match_user_id: userId,
+          match_threshold: options.threshold || 0.78,
+          match_count: options.limit || 10,
+          person_filter: options.personFilter || null
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error searching similar conversations:', error);
+      return []; // Return empty array on error
+    }
+  }
+
+  async findSemanticContext(
+    userId: string,
+    currentQuery: string,
+    currentPersonId: string
+  ): Promise<{
+    similarConversations: VectorSearchResult[];
+    crossPersonInsights: VectorSearchResult[];
+  }> {
+    const [similarConversations, allConversations] = await Promise.all([
+      // Find similar conversations with current person
+      this.searchSimilarConversations(userId, currentQuery, {
+        personFilter: currentPersonId !== 'general' ? currentPersonId : undefined,
+        limit: 5
+      }),
+      
+      // Find similar conversations with other people (cross-person insights)
+      currentPersonId !== 'general' 
+        ? this.searchSimilarConversations(userId, currentQuery, {
+            limit: 8
+          })
+        : []
+    ]);
+
+    const crossPersonInsights = currentPersonId !== 'general' 
+      ? allConversations.filter(r => r.person_id !== currentPersonId).slice(0, 3)
+      : [];
+
+    return {
+      similarConversations,
+      crossPersonInsights
+    };
+  }
+
+  async storeMessageEmbedding(
+    userId: string,
+    personId: string,
+    messageId: string,
+    content: string,
+    messageType: 'user' | 'assistant',
+    metadata: any = {}
+  ): Promise<void> {
+    try {
+      const embedding = await this.generateEmbedding(content);
+
+      const { error } = await this.supabase
+        .from('conversation_embeddings')
+        .insert({
+          user_id: userId,
+          person_id: personId,
+          message_id: messageId,
+          content: content,
+          embedding: embedding,
+          message_type: messageType,
+          metadata: metadata
+        });
+
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error storing message embedding:', error);
+      // Don't throw - embedding storage is supplementary
+    }
+  }
+}
+
+class ManagementContextBuilder {
+  private vectorService: VectorService;
+
+  constructor(private supabase: any, private userId: string) {
+    this.vectorService = new VectorService(supabase);
+  }
+
+  async buildFullContext(currentPersonId: string, currentQuery?: string): Promise<{
+    context: ManagementContext;
+  }> {
+    try {
+      const [people, semanticContext] = await Promise.all([
+        this.getPeopleOverview(),
+        currentQuery ? this.getSemanticContext(currentQuery, currentPersonId) : Promise.resolve(undefined)
+      ]);
+
+      const context: ManagementContext = {
+        people,
+        team_size: this.calculateTeamSize(people),
+        recent_themes: [],
+        current_challenges: [],
+        conversation_patterns: { most_discussed_people: [], trending_topics: [], cross_person_mentions: [] },
+        semantic_context: semanticContext
+      };
+
+      return { context };
+    } catch (error) {
+      console.error('Error building management context:', error);
+      // Return minimal context on error
+      return {
+        context: {
+          people: [],
+          team_size: { direct_reports: 0, stakeholders: 0, managers: 0, peers: 0 },
+          recent_themes: [],
+          current_challenges: [],
+          conversation_patterns: { most_discussed_people: [], trending_topics: [], cross_person_mentions: [] }
+        }
+      };
+    }
+  }
+
+  private async getPeopleOverview() {
+    const { data: people } = await this.supabase
+      .from('people')
+      .select('*')
+      .eq('user_id', this.userId);
+    
+    return people || [];
+  }
+
+  private calculateTeamSize(people: any[]) {
+    return {
+      direct_reports: people.filter(p => p.relationship_type === 'direct_report').length,
+      stakeholders: people.filter(p => p.relationship_type === 'stakeholder').length,
+      managers: people.filter(p => p.relationship_type === 'manager').length,
+      peers: people.filter(p => p.relationship_type === 'peer').length
+    };
+  }
+
+  private async getSemanticContext(query: string, currentPersonId: string) {
+    try {
+      const context = await this.vectorService.findSemanticContext(
+        this.userId,
+        query,
+        currentPersonId
+      );
+      
+      // Transform to match interface naming
+      return {
+        similar_conversations: context.similarConversations,
+        cross_person_insights: context.crossPersonInsights,
+        related_themes: []
+      };
+    } catch (error) {
+      console.error('Error getting semantic context:', error);
+      return undefined;
+    }
+  }
+}
+
+function buildSemanticContext(people: any[], semanticContext: any, currentQuery: string): string[] {
+  const insights: string[] = [];
+
+  // Add relevant past discussions
+  if (semanticContext?.similar_conversations?.length > 0) {
+    semanticContext.similar_conversations.slice(0, 3).forEach((conv: any) => {
+      const personName = conv.person_id === 'general' ? 'General discussion' : 
+        people.find(p => p.id === conv.person_id)?.name || 'Unknown';
+      insights.push(`Previous ${personName} discussion: "${conv.content.substring(0, 100)}..." (${Math.round(conv.similarity * 100)}% relevant)`);
+    });
+  }
+
+  // Add cross-person insights
+  if (semanticContext?.cross_person_insights?.length > 0) {
+    semanticContext.cross_person_insights.slice(0, 2).forEach((insight: any) => {
+      const personName = people.find(p => p.id === insight.person_id)?.name || 'Unknown';
+      insights.push(`${personName} pattern: "${insight.content.substring(0, 100)}..."`);
+    });
+  }
+
+  return insights;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,12 +302,50 @@ export async function POST(request: NextRequest) {
     // Get conversation history
     const conversationHistory = await getMessages(person_id, supabase);
 
-    // Gather management context for "one brain" awareness
-    let managementContext;
+    // Build enhanced management context with vector search
+    let managementContext: ManagementContextData | undefined;
+    let vectorService: VectorService | undefined;
     try {
-      managementContext = await gatherManagementContext(user.id, person_id, supabase);
+      const contextBuilder = new ManagementContextBuilder(supabase, user.id);
+      const { context } = await contextBuilder.buildFullContext(person_id, userMessage);
+      
+      // Convert to expected ManagementContextData format
+      const teamContext: TeamContext = {
+        totalPeople: context.people.length,
+        peopleByRole: context.people.reduce((acc: any, p: any) => {
+          const role = p.role || 'Unspecified';
+          acc[role] = (acc[role] || 0) + 1;
+          return acc;
+        }, {}),
+        peopleByRelationship: context.people.reduce((acc: any, p: any) => {
+          acc[p.relationship_type] = (acc[p.relationship_type] || 0) + 1;
+          return acc;
+        }, {}),
+        recentActivity: [],
+        managementChallenges: [],
+        teamOverview: `You manage ${context.team_size.direct_reports} direct reports, work with ${context.team_size.stakeholders} stakeholders, and coordinate with ${context.team_size.peers} peers.`
+      };
+
+      const allPeople: PersonContext[] = context.people.map((p: any) => ({
+        name: p.name,
+        role: p.role,
+        relationshipType: p.relationship_type,
+        recentTopics: [],
+        conversationSummary: `Team member: ${p.name}`
+      }));
+
+      const crossConversationInsights = buildSemanticContext(context.people, context.semantic_context, userMessage);
+
+      managementContext = {
+        teamContext,
+        allPeople,
+        crossConversationInsights,
+        contextSummary: `Team of ${context.people.length} people with vector-enhanced context awareness.`
+      };
+      
+      vectorService = new VectorService(supabase);
     } catch (contextError) {
-      console.warn('Failed to gather management context, proceeding without it:', contextError);
+      console.warn('Failed to gather enhanced management context, proceeding without it:', contextError);
       managementContext = undefined;
     }
 
@@ -113,6 +401,25 @@ export async function POST(request: NextRequest) {
               is_user: false,
               user_id: user.id
             }, supabase);
+
+            // Store embeddings for both messages (background task)
+            if (vectorService) {
+              vectorService.storeMessageEmbedding(
+                user.id,
+                person_id,
+                userMessageRecord.id,
+                userMessage,
+                'user'
+              ).catch(console.error);
+              
+              vectorService.storeMessageEmbedding(
+                user.id,
+                person_id,
+                assistantMessage.id,
+                fullResponse,
+                'assistant'
+              ).catch(console.error);
+            }
 
             // Send completion message
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 

@@ -1,37 +1,31 @@
 "use client";
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
-import { StreamingChatPage } from '@/components/chat/StreamingChatPage';
-import { useStreamingResponse } from '@/lib/hooks/useStreamingResponse';
-import { useMessageState } from '@/lib/hooks/useMessageState';
+import { DroppedFile } from '@/lib/hooks/useFileDropZone';
+import { FilePreviewList } from './FilePreview';
 
 interface EnhancedChatInputProps {
-  onSend: (message: string) => void;
+  onSend: (message: string, files?: DroppedFile[]) => void;
   disabled?: boolean;
   placeholder?: string;
+  files?: DroppedFile[];
+  onRemoveFile?: (fileId: string) => void;
+  onOpenFileDialog?: () => void;
 }
 
 export function EnhancedChatInput({ 
   onSend, 
   disabled = false, 
-  placeholder = "Message Mano..." 
+  placeholder = "Message Mano...",
+  files = [],
+  onRemoveFile,
+  onOpenFileDialog
 }: EnhancedChatInputProps) {
   const [message, setMessage] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const {
-    streamingMessage,
-    startStreaming,
-    clearStreamingMessage
-  } = useStreamingResponse();
 
-  const {
-    messages,
-    addUserMessage,
-    addLoadingMessage,
-    startStreamingMessage
-  } = useMessageState();
 
   // Auto-resize textarea
   useEffect(() => {
@@ -52,9 +46,9 @@ export function EnhancedChatInput({
 
   const handleSubmit = () => {
     const trimmedMessage = message.trim();
-    if (!trimmedMessage || disabled) return;
+    if ((!trimmedMessage && files.length === 0) || disabled) return;
     
-    onSend(trimmedMessage);
+    onSend(trimmedMessage, files);
     setMessage('');
     
     // Reset textarea height
@@ -71,11 +65,32 @@ export function EnhancedChatInput({
     }
   };
 
-  const isMessageEmpty = !message.trim();
+  const hasContent = message.trim() || files.length > 0;
 
   return (
     <div className="enhanced-chat-input">
+      {/* File previews above input */}
+      {files.length > 0 && (
+        <div className="input-files-area">
+          <FilePreviewList
+            files={files}
+            onRemove={onRemoveFile || (() => {})}
+            isCompact={true}
+          />
+        </div>
+      )}
+      
       <div className="input-container">
+        {/* Attachment button */}
+        <button
+          onClick={onOpenFileDialog}
+          className="attachment-button"
+          disabled={disabled}
+          aria-label="Attach file"
+        >
+          📎
+        </button>
+        
         <textarea
           ref={textareaRef}
           value={message}
@@ -91,8 +106,8 @@ export function EnhancedChatInput({
         
         <button
           onClick={handleSubmit}
-          disabled={disabled || isMessageEmpty}
-          className={`send-button ${isMessageEmpty ? 'disabled' : 'enabled'}`}
+          disabled={disabled || !hasContent}
+          className={`send-button ${hasContent ? 'enabled' : 'disabled'}`}
           aria-label="Send message"
         >
           <SendIcon />
@@ -121,9 +136,4 @@ function SendIcon() {
   );
 }
 
-// Real streaming
-<StreamingChatPage personId="123" personName="John" />
-
-// Mock streaming for testing  
-import { MockStreamingChatPage } from '@/components/chat/StreamingChatPage';
-<MockStreamingChatPage personId="test" personName="Demo" /> 
+ 

@@ -28,6 +28,15 @@ export interface Person {
     updated_at: string;
   }
   
+  export interface MessageFile {
+    id: string;
+    name: string;
+    type: 'image' | 'transcript' | 'document';
+    size: number;
+    url?: string; // For preview/download
+    icon: string; // Emoji icon for file type
+  }
+  
   export interface Database {
     public: {
       Tables: {

@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { MessageFile } from '@/types/database';
 
 interface MessageBubbleProps {
   content: string;
   isUser: boolean;
+  files?: MessageFile[];
   isLoading?: boolean;
   isStreaming?: boolean;
   timestamp?: Date;
@@ -16,6 +18,7 @@ interface MessageBubbleProps {
 export function MessageBubble({ 
   content, 
   isUser, 
+  files = [],
   isLoading = false,
   isStreaming = false,
   timestamp,
@@ -44,6 +47,16 @@ export function MessageBubble({
         <div className="message-user-content">
           <ReactMarkdown>{content}</ReactMarkdown>
         </div>
+        
+        {/* File attachments for user messages */}
+        {files.length > 0 && (
+          <div className="message-attachments">
+            {files.map(file => (
+              <MessageFileAttachment key={file.id} file={file} />
+            ))}
+          </div>
+        )}
+        
         {timestamp && (
           <div className="message-timestamp">
             {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -71,12 +84,55 @@ export function MessageBubble({
             )}
           </div>
         )}
+        
+        {/* File attachments for assistant messages */}
+        {files.length > 0 && !isLoading && (
+          <div className="message-attachments">
+            {files.map(file => (
+              <MessageFileAttachment key={file.id} file={file} />
+            ))}
+          </div>
+        )}
+        
         {timestamp && !isLoading && !isStreaming && (
           <div className="message-timestamp">
             {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function MessageFileAttachment({ file }: { file: MessageFile }) {
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  return (
+    <div className="message-file-attachment">
+      <div className="file-attachment-content">
+        <span className="file-attachment-icon">{file.icon}</span>
+        <div className="file-attachment-details">
+          <div className="file-attachment-name">{file.name}</div>
+          <div className="file-attachment-meta">
+            {file.type.toUpperCase()} • {formatFileSize(file.size)}
+          </div>
+        </div>
+      </div>
+      {file.url && (
+        <button 
+          className="file-attachment-action"
+          onClick={() => window.open(file.url, '_blank')}
+          aria-label="View file"
+        >
+          👁️
+        </button>
+      )}
     </div>
   );
 }

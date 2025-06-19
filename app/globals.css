@@ -2391,6 +2391,480 @@ textarea:focus-visible,
   }
 }
 
+/* File Drop Zone Styles - Medium-inspired */
+.chat-drop-zone {
+  position: relative;
+  height: 100%;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+}
+
+.chat-drop-zone.drag-active {
+  background-color: rgba(25, 25, 25, 0.02);
+}
+
+.drop-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  border: 1px dashed rgba(25, 25, 25, 0.2);
+  border-radius: 4px;
+  margin: 24px;
+}
+
+.drop-content {
+  text-align: center;
+  padding: 48px 32px;
+}
+
+.drop-icon {
+  font-size: 40px;
+  margin-bottom: 24px;
+  opacity: 0.7;
+}
+
+.drop-text {
+  font-size: 20px;
+  font-weight: 400;
+  color: rgba(25, 25, 25, 0.8);
+  margin-bottom: 12px;
+  letter-spacing: -0.02em;
+  line-height: 1.4;
+}
+
+.drop-subtext {
+  font-size: 16px;
+  color: rgba(25, 25, 25, 0.5);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* File Preview Styles - Clean & Editorial */
+.file-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 20px 24px;
+  background: rgba(249, 249, 249, 0.5);
+  border-radius: 0;
+  margin-bottom: 0;
+  border-top: 1px solid rgba(25, 25, 25, 0.06);
+}
+
+.file-preview-list.compact {
+  padding: 16px 20px;
+  gap: 12px;
+}
+
+.file-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: white;
+  border: 1px solid rgba(25, 25, 25, 0.08);
+  border-radius: 0;
+  padding: 16px 20px;
+  min-width: 240px;
+  max-width: 320px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.file-preview.compact {
+  min-width: 200px;
+  padding: 12px 16px;
+  gap: 12px;
+}
+
+.file-preview.error {
+  border-color: rgba(220, 38, 38, 0.2);
+  background: rgba(254, 242, 242, 0.5);
+}
+
+.file-preview:hover {
+  border-color: rgba(25, 25, 25, 0.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  transform: translateY(-1px);
+}
+
+.file-preview-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-image-preview {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(25, 25, 25, 0.06);
+}
+
+.file-image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.file-image-overlay {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 2px;
+  padding: 2px 6px;
+}
+
+.file-icon-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  background: rgba(25, 25, 25, 0.04);
+  border-radius: 2px;
+  flex-shrink: 0;
+  border: 1px solid rgba(25, 25, 25, 0.06);
+}
+
+.file-type-icon {
+  font-size: 24px;
+  opacity: 0.7;
+}
+
+.file-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  font-weight: 500;
+  color: rgba(25, 25, 25, 0.9);
+  font-size: 15px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+
+.file-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  color: rgba(25, 25, 25, 0.5);
+  font-weight: 400;
+}
+
+.file-type {
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+}
+
+.file-error {
+  font-size: 13px;
+  color: rgba(220, 38, 38, 0.8);
+  margin-top: 4px;
+  font-weight: 400;
+}
+
+.file-remove-button {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(25, 25, 25, 0.8);
+  color: white;
+  border: 2px solid white;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 300;
+}
+
+.file-remove-button:hover {
+  background: rgba(25, 25, 25, 1);
+  transform: scale(1.05);
+}
+
+.file-processing-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+}
+
+.processing-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(25, 25, 25, 0.1);
+  border-top: 2px solid rgba(25, 25, 25, 0.6);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Enhanced Input with Files - Editorial Style */
+.enhanced-chat-input {
+  padding: 24px;
+  background: white;
+  border-top: 1px solid rgba(25, 25, 25, 0.06);
+}
+
+.input-files-area {
+  margin-bottom: 0;
+}
+
+.input-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  background: rgba(249, 249, 249, 0.7);
+  border: 1px solid rgba(25, 25, 25, 0.08);
+  border-radius: 0;
+  padding: 16px 20px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: inherit;
+}
+
+.input-container:focus-within {
+  border-color: rgba(25, 25, 25, 0.2);
+  background: white;
+  box-shadow: 0 0 0 1px rgba(25, 25, 25, 0.04);
+}
+
+.attachment-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: rgba(25, 25, 25, 0.4);
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.attachment-button:hover {
+  background: rgba(25, 25, 25, 0.04);
+  color: rgba(25, 25, 25, 0.7);
+}
+
+.attachment-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Mobile Responsive - Maintaining Editorial Feel */
+@media (max-width: 768px) {
+  .file-preview {
+    min-width: 100%;
+    max-width: 100%;
+  }
+  
+  .file-preview-list {
+    gap: 12px;
+    padding: 16px 20px;
+  }
+  
+  .drop-overlay {
+    margin: 16px;
+  }
+  
+  .drop-content {
+    padding: 32px 24px;
+  }
+  
+  .drop-icon {
+    font-size: 32px;
+    margin-bottom: 20px;
+  }
+  
+  .drop-text {
+    font-size: 18px;
+  }
+  
+  .drop-subtext {
+    font-size: 15px;
+  }
+  
+  .enhanced-chat-input {
+    padding: 20px;
+  }
+  
+  .input-container {
+    padding: 14px 16px;
+  }
+}
+
+/* Typography & Spacing Consistency */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ensure consistent, editorial spacing throughout */
+.chat-layout .chat-messages {
+  padding: 32px 24px;
+  line-height: 1.6;
+}
+
+.message-bubble .message-text {
+  line-height: 1.6;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* Message File Attachments - Clean & Compact */
+.message-attachments {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.message-file-attachment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 6px;
+  padding: 8px 12px;
+  max-width: 280px;
+  transition: all 0.2s ease;
+}
+
+.message-user .message-file-attachment {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.message-file-attachment:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.message-user .message-file-attachment:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.file-attachment-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-attachment-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.file-attachment-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-attachment-name {
+  font-weight: 500;
+  font-size: 13px;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.file-attachment-meta {
+  font-size: 11px;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 1px;
+}
+
+.file-attachment-action {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.file-attachment-action:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.message-user .file-attachment-action:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Ensure message text and attachments have proper spacing */
+.message-user-content + .message-attachments,
+.message-assistant-content .message-content-wrapper + .message-attachments {
+  margin-top: 8px;
+}
+
+/* Handle messages with only files (no text) */
+.message-user:has(.message-attachments):not(:has(.message-user-content)) .message-attachments,
+.message-assistant:has(.message-attachments):not(:has(.message-content-wrapper)) .message-attachments {
+  margin-top: 0;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .message-file-attachment {
+    max-width: 100%;
+  }
+  
+  .file-attachment-name {
+    font-size: 12px;
+  }
+  
+  .file-attachment-meta {
+    font-size: 10px;
+  }
+}
+
 /* Dark mode support (future enhancement) */
 @media (prefers-color-scheme: dark) {
   /* Keep monochrome design consistent in dark mode */
