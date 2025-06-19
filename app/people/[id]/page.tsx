@@ -36,7 +36,7 @@ export default function PersonDetailPage() {
   // Use context and hooks instead of local state
   const { people, getPerson, updatePerson, addPerson } = usePeople();
   const { messages, isLoading: messagesLoading, addMessage } = useMessages(personId);
-  
+
   // Add streaming support
   const {
     streamingMessage,
