@@ -17,7 +17,7 @@ import { useMessages } from '@/lib/hooks/use-messages';
 import { EnhancedChatInput } from '@/components/chat/EnhancedChatInput';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { useStreamingResponse } from '@/lib/hooks/useStreamingResponse';
-import { createMockStream } from '@/lib/api/streaming';
+
 
 
 interface StagedFile {
@@ -93,7 +93,7 @@ export default function PersonDetailPage() {
 
 
 
-  // Enhanced send message function with streaming support
+  // Enhanced send message function with real API streaming
   const handleSendMessage = async (content: string) => {
     // Don't send if already processing
     if (sending || streamingMessage?.isStreaming) return;
@@ -129,17 +129,31 @@ export default function PersonDetailPage() {
       // Clear staged files after sending
       setStagedFiles([]);
 
-      // Start streaming after a short delay (simulate Mano thinking)
-      setTimeout(async () => {
-        const streamingId = `streaming-${Date.now()}`;
-        
-        await startStreaming(streamingId, async () => {
-          // For now, use mock streaming to test the effect
-          // TODO: Replace with real API streaming
-          const mockResponse = `Thank you for your message about "${content}". I'm analyzing your request and will provide detailed guidance. This demonstrates the smooth character-by-character streaming effect that makes the conversation feel more natural and engaging.`;
-          return createMockStream(mockResponse, 6); // 6 words per second
-        });
-      }, 800); // 800ms thinking delay
+      // Call the real streaming API
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          person_id: personId,
+          message: combinedMessage
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API Error ${response.status}: ${errorText}`);
+      }
+
+      if (!response.body) {
+        throw new Error('No response body');
+      }
+
+      // Start streaming with the real API response
+      const streamingId = `streaming-${Date.now()}`;
+      
+      await startStreaming(streamingId, async () => {
+        return response.body!;
+      });
 
     } catch (error) {
       console.error('Error sending message:', error);

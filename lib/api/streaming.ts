@@ -96,24 +96,4 @@ export function parseSSEStream(stream: ReadableStream<Uint8Array>): ReadableStre
   });
 }
 
-// Mock streaming function for testing
-export function createMockStream(text: string, wordsPerSecond: number = 3): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  const words = text.split(' ');
-  let wordIndex = 0;
-
-  return new ReadableStream({
-    start(controller) {
-      const interval = setInterval(() => {
-        if (wordIndex < words.length) {
-          const word = wordIndex === 0 ? words[wordIndex] : ' ' + words[wordIndex];
-          controller.enqueue(encoder.encode(word));
-          wordIndex++;
-        } else {
-          clearInterval(interval);
-          controller.close();
-        }
-      }, 1000 / wordsPerSecond);
-    }
-  });
-} 
+// Mock streaming removed - now using real API responses 

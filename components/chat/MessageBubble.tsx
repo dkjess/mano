@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 interface MessageBubbleProps {
   content: string;
@@ -36,37 +37,45 @@ export function MessageBubble({
     }
   }, [content, isStreaming, isLoading, onComplete]);
 
-  return (
-    <div className={`message-bubble ${isUser ? 'user-message' : 'assistant-message'}`}>
-      <div className="message-content">
-        {!isUser && (
-          <div className="message-avatar">
-            {avatar || '✋'}
+  if (isUser) {
+    return (
+      <div className="message-user">
+        <div className="message-user-label">YOU</div>
+        <div className="message-user-content">
+          <ReactMarkdown>{content}</ReactMarkdown>
+        </div>
+        {timestamp && (
+          <div className="message-timestamp">
+            {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
         )}
-        
-        <div className="message-body">
-          <div className="message-text">
-            {isLoading ? (
-              <ManoThinkingLoader />
-            ) : (
-              <div className="message-content-wrapper">
-                <span className="message-text-content">
-                  {displayedContent}
-                </span>
-                {showCursor && (
-                  <span className="typing-cursor">|</span>
-                )}
-              </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="message-assistant">
+      <div className="message-assistant-emoji">
+        {avatar || '✋'}
+      </div>
+      <div className="message-assistant-content">
+        {isLoading ? (
+          <ManoThinkingLoader />
+        ) : (
+          <div className="message-content-wrapper">
+            <div className="message-text-content">
+              <ReactMarkdown>{displayedContent}</ReactMarkdown>
+            </div>
+            {showCursor && (
+              <span className="typing-cursor">|</span>
             )}
           </div>
-          
-          {timestamp && !isLoading && !isStreaming && (
-            <div className="message-timestamp">
-              {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </div>
-          )}
-        </div>
+        )}
+        {timestamp && !isLoading && !isStreaming && (
+          <div className="message-timestamp">
+            {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -87,13 +96,10 @@ function ManoThinkingLoader() {
   }, []);
 
   return (
-    <div className="mano-thinking">
-      <div className="thinking-content">
-        <span className="thinking-emoji">✋</span>
-        <span className="thinking-text">Mano is thinking{dots}</span>
-      </div>
-      <div className="thinking-animation">
-        <div className="thinking-pulse"></div>
+    <div className="message-loading">
+      <div className="message-loading-emoji">✋</div>
+      <div className="message-loading-dots">
+        Mano is thinking{dots}
       </div>
     </div>
   );

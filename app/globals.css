@@ -312,6 +312,7 @@ textarea:focus-visible,
 .message-user {
   margin-bottom: var(--space-xl);
   position: relative;
+  text-align: right;
 }
 
 .message-user-label {
@@ -322,16 +323,21 @@ textarea:focus-visible,
   letter-spacing: 0.8px;
   color: var(--color-gray-500);
   margin-bottom: var(--space-sm);
+  text-align: right;
 }
 
 .message-user-content {
   font-family: var(--font-secondary);
   font-size: 16px;
-  font-weight: 500;
-  color: var(--color-black);
+  font-weight: 400;
+  font-style: italic;
+  color: var(--color-gray-700);
   line-height: var(--line-height-normal);
-  padding-left: var(--space-lg);
-  border-left: 2px solid var(--color-black);
+  padding-right: var(--space-lg);
+  border-right: 2px solid var(--color-gray-400);
+  text-align: right;
+  display: inline-block;
+  max-width: 80%;
 }
 
 /* Assistant Messages */
@@ -980,6 +986,12 @@ textarea:focus-visible,
   opacity: 0.7;
 }
 
+/* User message markdown styling */
+.message-user-content * {
+  font-style: italic;
+  text-align: right;
+}
+
 .message-user-content code {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
   background: var(--color-gray-100);
@@ -987,6 +999,7 @@ textarea:focus-visible,
   border-radius: 3px;
   font-size: 14px;
   color: var(--color-gray-800);
+  font-style: normal; /* Code should not be italic */
 }
 
 .message-user-content pre {
@@ -999,6 +1012,8 @@ textarea:focus-visible,
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: 13px;
   line-height: var(--line-height-normal);
+  font-style: normal; /* Code blocks should not be italic */
+  text-align: left; /* Code blocks should be left-aligned */
 }
 
 .message-user-content pre code {
@@ -2234,6 +2249,23 @@ textarea:focus-visible,
 
 .message-text-content {
   display: inline;
+}
+
+/* Ensure ReactMarkdown content inherits proper styling */
+.message-text-content > div,
+.message-text-content > div > * {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  line-height: inherit;
+}
+
+.message-text-content > div > *:first-child {
+  margin-top: 0;
+}
+
+.message-text-content > div > *:last-child {
+  margin-bottom: 0;
 }
 
 .typing-cursor {

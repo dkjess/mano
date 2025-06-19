@@ -2,7 +2,7 @@
 
 import { useStreamingResponse } from '@/lib/hooks/useStreamingResponse';
 import { useMessageState, type Message } from '@/lib/hooks/useMessageState';
-import { streamChatResponse, createMockStream } from '@/lib/api/streaming';
+import { streamChatResponse } from '@/lib/api/streaming';
 import { ChatLayout } from '@/components/chat/ChatLayout';
 import { EnhancedChatInput } from '@/components/chat/EnhancedChatInput';
 import { MessageBubble } from '@/components/chat/MessageBubble';
@@ -10,13 +10,11 @@ import { MessageBubble } from '@/components/chat/MessageBubble';
 interface StreamingChatPageProps {
   personId: string;
   personName?: string;
-  useMockStream?: boolean; // For testing purposes
 }
 
 export function StreamingChatPage({ 
   personId, 
-  personName,
-  useMockStream = false 
+  personName
 }: StreamingChatPageProps) {
   const {
     messages,
@@ -45,14 +43,8 @@ export function StreamingChatPage({
         const streamingId = startStreamingMessage(loadingId);
         
         await startStreaming(streamingId, async () => {
-          if (useMockStream) {
-            // Use mock stream for testing
-            const mockResponse = `This is a mock response to your message: "${content}". Here's some additional text to demonstrate the smooth streaming effect. Notice how each character appears one by one with natural timing.`;
-            return createMockStream(mockResponse, 8); // 8 words per second
-          } else {
-            // Use real API
-            return await streamChatResponse(content, personId);
-          }
+          // Use real API streaming
+          return await streamChatResponse(content, personId);
         });
       }, 800); // Short delay for Mano to "think"
       
@@ -153,13 +145,12 @@ function StreamingChatHeader({
   );
 }
 
-// Export a version that uses mock streaming for easy testing
+// Export alias for backward compatibility
 export function MockStreamingChatPage({ personId, personName }: { personId: string; personName?: string }) {
   return (
     <StreamingChatPage 
       personId={personId} 
       personName={personName} 
-      useMockStream={true} 
     />
   );
 } 

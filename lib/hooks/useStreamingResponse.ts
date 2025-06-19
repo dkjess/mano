@@ -24,6 +24,7 @@ export function useStreamingResponse() {
     }
     if (streamIntervalRef.current) {
       clearInterval(streamIntervalRef.current);
+      streamIntervalRef.current = null;
     }
 
     // Initialize streaming message
@@ -40,59 +41,25 @@ export function useStreamingResponse() {
       
       const reader = stream.getReader();
       const decoder = new TextDecoder();
-      let buffer = '';
-      let displayedContent = '';
+      
+      // State for the streaming process
+      let fullBuffer = '';
+      let displayedLength = 0;
+      let isStreamComplete = false;
+      let typingStarted = false;
 
-      // Read from stream and buffer content
-      const readChunk = async () => {
-        try {
-          const { done, value } = await reader.read();
-          
-          if (done) {
-            // Stream finished, display any remaining content
-            if (buffer.length > displayedContent.length) {
-              await typeOutRemaining(buffer, displayedContent, messageId);
-            } else {
-              setStreamingMessage(prev => prev ? {
-                ...prev,
-                isComplete: true,
-                isStreaming: false
-              } : null);
-            }
-            return;
-          }
-
-          // Decode and add to buffer
-          const chunk = decoder.decode(value, { stream: true });
-          buffer += chunk;
-
-          // Start typing out if we haven't already
-          if (!streamIntervalRef.current && buffer.length > 0) {
-            startTypingEffect(buffer, messageId);
-          }
-
-          // Continue reading
-          readChunk();
-        } catch (error) {
-          if (error instanceof Error && error.name !== 'AbortError') {
-            console.error('Stream reading error:', error);
-            setStreamingMessage(prev => prev ? {
-              ...prev,
-              isComplete: true,
-              isStreaming: false
-            } : null);
-          }
-        }
-      };
-
-      // Start typing effect that displays characters smoothly
-      const startTypingEffect = (fullContent: string, messageId: string) => {
-        let charIndex = 0;
-        const typingSpeed = 30; // milliseconds per character
+      // Single continuous typing effect
+      const startTyping = () => {
+        if (typingStarted) return;
+        typingStarted = true;
+        
+        const typingSpeed = 25; // milliseconds per character
         
         streamIntervalRef.current = setInterval(() => {
-          if (charIndex < fullContent.length) {
-            displayedContent = fullContent.slice(0, charIndex + 1);
+          if (displayedLength < fullBuffer.length) {
+            // More content to display
+            displayedLength++;
+            const displayedContent = fullBuffer.slice(0, displayedLength);
             
             setStreamingMessage(prev => 
               prev?.id === messageId ? {
@@ -100,50 +67,98 @@ export function useStreamingResponse() {
                 content: displayedContent
               } : prev
             );
-            
-            charIndex++;
-          } else {
-            // Caught up with buffer, pause typing until more content arrives
+          } else if (isStreamComplete) {
+            // We've displayed everything and stream is done
             if (streamIntervalRef.current) {
               clearInterval(streamIntervalRef.current);
               streamIntervalRef.current = null;
             }
+            setStreamingMessage(prev => prev ? {
+              ...prev,
+              isComplete: true,
+              isStreaming: false
+            } : null);
           }
+          // If displayedLength >= fullBuffer.length but !isStreamComplete,
+          // keep the interval running and wait for more content
         }, typingSpeed);
       };
 
-      // Type out any remaining content when stream ends
-      const typeOutRemaining = async (fullContent: string, currentContent: string, messageId: string) => {
-        return new Promise<void>((resolve) => {
-          let charIndex = currentContent.length;
-          const typingSpeed = 20; // Slightly faster for final content
+      // Read from stream and accumulate content
+      const readChunk = async (): Promise<void> => {
+        try {
+          const { done, value } = await reader.read();
           
-          const interval = setInterval(() => {
-            if (charIndex < fullContent.length) {
-              const newContent = fullContent.slice(0, charIndex + 1);
+          if (done) {
+            isStreamComplete = true;
+            return;
+          }
+
+          // Decode chunk and process Server-Sent Events
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6); // Remove 'data: ' prefix
               
-              setStreamingMessage(prev => 
-                prev?.id === messageId ? {
-                  ...prev,
-                  content: newContent
-                } : prev
-              );
-              
-              charIndex++;
-            } else {
-              clearInterval(interval);
-              setStreamingMessage(prev => prev ? {
-                ...prev,
-                isComplete: true,
-                isStreaming: false
-              } : null);
-              resolve();
+              try {
+                const parsed = JSON.parse(data);
+                
+                if (parsed.type === 'delta' && parsed.text) {
+                  // Add new text to buffer
+                  fullBuffer += parsed.text;
+                  
+                  // Start typing if not already started
+                  if (!typingStarted) {
+                    startTyping();
+                  }
+                } else if (parsed.type === 'complete') {
+                  isStreamComplete = true;
+                  return;
+                } else if (parsed.type === 'error') {
+                  // Handle error from API
+                  fullBuffer = parsed.error || 'An error occurred';
+                  isStreamComplete = true;
+                  if (!typingStarted) {
+                    startTyping();
+                  }
+                  return;
+                }
+              } catch (parseError) {
+                // If not valid JSON, might be plain text - add to buffer
+                if (data && data !== '[DONE]') {
+                  fullBuffer += data;
+                  if (!typingStarted) {
+                    startTyping();
+                  }
+                }
+              }
             }
-          }, typingSpeed);
-        });
+          }
+
+          // Continue reading
+          await readChunk();
+        } catch (error) {
+          if (error instanceof Error && error.name !== 'AbortError') {
+            console.error('Stream reading error:', error);
+            isStreamComplete = true;
+            if (streamIntervalRef.current) {
+              clearInterval(streamIntervalRef.current);
+              streamIntervalRef.current = null;
+            }
+            setStreamingMessage(prev => prev ? {
+              ...prev,
+              content: fullBuffer || 'Sorry, there was an error processing your message.',
+              isComplete: true,
+              isStreaming: false
+            } : null);
+          }
+        }
       };
 
-      readChunk();
+      // Start reading the stream
+      await readChunk();
     } catch (error) {
       console.error('Streaming error:', error);
       setStreamingMessage(prev => prev ? {
@@ -161,6 +176,7 @@ export function useStreamingResponse() {
     }
     if (streamIntervalRef.current) {
       clearInterval(streamIntervalRef.current);
+      streamIntervalRef.current = null;
     }
     setStreamingMessage(prev => prev ? {
       ...prev,

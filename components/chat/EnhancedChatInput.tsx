@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import { StreamingChatPage } from '@/components/chat/StreamingChatPage';
+import { useStreamingResponse } from '@/lib/hooks/useStreamingResponse';
+import { useMessageState } from '@/lib/hooks/useMessageState';
 
 interface EnhancedChatInputProps {
   onSend: (message: string) => void;
@@ -16,6 +19,19 @@ export function EnhancedChatInput({
   const [message, setMessage] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const {
+    streamingMessage,
+    startStreaming,
+    clearStreamingMessage
+  } = useStreamingResponse();
+
+  const {
+    messages,
+    addUserMessage,
+    addLoadingMessage,
+    startStreamingMessage
+  } = useMessageState();
 
   // Auto-resize textarea
   useEffect(() => {
@@ -103,4 +119,11 @@ function SendIcon() {
       <path d="M22 2 11 13" />
     </svg>
   );
-} 
+}
+
+// Real streaming
+<StreamingChatPage personId="123" personName="John" />
+
+// Mock streaming for testing  
+import { MockStreamingChatPage } from '@/components/chat/StreamingChatPage';
+<MockStreamingChatPage personId="test" personName="Demo" /> 
