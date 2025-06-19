@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { person_id, message: userMessage } = body;
+    const { person_id, message: userMessage, isTopicConversation, topicTitle, topicId } = body;
 
     if (!person_id || !userMessage) {
       return new Response('person_id and message are required', { status: 400 });
@@ -299,8 +299,19 @@ export async function POST(request: NextRequest) {
       person = personData;
     }
 
-    // Get conversation history
-    const conversationHistory = await getMessages(person_id, supabase);
+    // Get conversation history (from topic if applicable, otherwise from person)
+    let conversationHistory;
+    if (isTopicConversation && topicId) {
+      // For topic conversations, get messages from the topic
+      const { data: topicMessages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('topic_id', topicId)
+        .order('created_at', { ascending: true });
+      conversationHistory = topicMessages || [];
+    } else {
+      conversationHistory = await getMessages(person_id, supabase);
+    }
 
     // Build enhanced management context with vector search
     let managementContext: ManagementContextData | undefined;
@@ -349,20 +360,42 @@ export async function POST(request: NextRequest) {
       managementContext = undefined;
     }
 
-    // Save user message first
-    const userMessageRecord = await createMessage({
-      person_id,
-      content: userMessage,
-      is_user: true,
-      user_id: user.id
-    }, supabase);
+    // Save user message first (to topic or person)
+    let userMessageRecord;
+    if (isTopicConversation && topicId) {
+      // For topic conversations, save to topic messages
+      const { data: message, error } = await supabase
+        .from('messages')
+        .insert({
+          content: userMessage,
+          topic_id: topicId,
+          person_id: null,
+          is_user: true
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      userMessageRecord = message;
+    } else {
+      userMessageRecord = await createMessage({
+        person_id,
+        content: userMessage,
+        is_user: true,
+        user_id: user.id
+      }, supabase);
+    }
 
     try {
       // Get Claude's streaming response with management context
+      // For topic conversations, enhance the context
+      const contextualName = isTopicConversation ? `Topic Discussion: ${topicTitle}` : person.name;
+      const contextualRole = isTopicConversation ? 'Management Coach for Topic Discussion' : person.role;
+      
       const stream = await getChatCompletionStreaming(
         userMessage,
-        person.name,
-        person.role,
+        contextualName,
+        contextualRole,
         person.relationship_type,
         conversationHistory,
         managementContext
@@ -395,12 +428,30 @@ export async function POST(request: NextRequest) {
             }
 
             // Save the complete response to database
-            const assistantMessage = await createMessage({
-              person_id,
-              content: fullResponse,
-              is_user: false,
-              user_id: user.id
-            }, supabase);
+            let assistantMessage;
+            if (isTopicConversation && topicId) {
+              // For topic conversations, save to topic messages
+              const { data: message, error } = await supabase
+                .from('messages')
+                .insert({
+                  content: fullResponse,
+                  topic_id: topicId,
+                  person_id: null,
+                  is_user: false
+                })
+                .select()
+                .single();
+              
+              if (error) throw error;
+              assistantMessage = message;
+            } else {
+              assistantMessage = await createMessage({
+                person_id,
+                content: fullResponse,
+                is_user: false,
+                user_id: user.id
+              }, supabase);
+            }
 
             // Store embeddings for both messages (background task)
             if (vectorService) {
@@ -448,12 +499,28 @@ export async function POST(request: NextRequest) {
             }
 
             // Save error message
-            const errorMessageRecord = await createMessage({
-              person_id,
-              content: errorMessage,
-              is_user: false,
-              user_id: user.id
-            }, supabase);
+            let errorMessageRecord;
+            if (isTopicConversation && topicId) {
+              const { data: message, error } = await supabase
+                .from('messages')
+                .insert({
+                  content: errorMessage,
+                  topic_id: topicId,
+                  person_id: null,
+                  is_user: false
+                })
+                .select()
+                .single();
+              
+              if (!error) errorMessageRecord = message;
+            } else {
+              errorMessageRecord = await createMessage({
+                person_id,
+                content: errorMessage,
+                is_user: false,
+                user_id: user.id
+              }, supabase);
+            }
 
             // Send error to client
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 

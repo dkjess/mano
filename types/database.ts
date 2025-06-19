@@ -21,11 +21,13 @@ export interface Person {
   
   export interface Message {
     id: string;
-    person_id: string;
+    person_id: string | null;
+    topic_id?: string | null;
     content: string;
-    role: 'user' | 'assistant';
+    is_user: boolean;
     created_at: string;
-    updated_at: string;
+    updated_at?: string;
+    role?: 'user' | 'assistant'; // Legacy field for compatibility
   }
   
   export interface MessageFile {

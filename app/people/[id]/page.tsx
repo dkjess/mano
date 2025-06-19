@@ -20,6 +20,7 @@ import { useStreamingResponse } from '@/lib/hooks/useStreamingResponse';
 import { useFileDropZone, DroppedFile } from '@/lib/hooks/useFileDropZone';
 import { ChatDropZone } from '@/components/chat/ChatDropZone';
 import { MessageFile } from '@/types/database';
+import { useTopics } from '@/lib/hooks/useTopics';
 
 
 
@@ -34,8 +35,9 @@ export default function PersonDetailPage() {
   const personId = params.id as string;
   
   // Use context and hooks instead of local state
-  const { people, getPerson, updatePerson, addPerson } = usePeople();
+  const { people, getPerson, updatePerson, addPerson, deletePerson } = usePeople();
   const { messages, isLoading: messagesLoading, addMessage } = useMessages(personId);
+  const { topics } = useTopics();
 
   // Add streaming support
   const {
@@ -181,7 +183,8 @@ export default function PersonDetailPage() {
         id: `user-${Date.now()}`,
         person_id: personId,
         content: content, // Only the user's actual message text
-        role: 'user',
+        is_user: true,
+        role: 'user', // Legacy field for compatibility
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         files: messageFiles // Clean file attachments
@@ -436,7 +439,10 @@ export default function PersonDetailPage() {
   };
 
   const handlePersonDeleted = () => {
-    // The menu will handle navigation, so we don't need to do anything here
+    // Remove the person from the context so they disappear from the sidebar immediately
+    if (person) {
+      deletePerson(person.id);
+    }
   };
 
   if (loading) {
@@ -493,7 +499,12 @@ export default function PersonDetailPage() {
           </section>
           
           <section className="nav-section">
-            <h2 className="nav-section-title">Your Team</h2>
+            <div className="nav-section-header">
+              <h2 className="nav-section-title">Your Team</h2>
+              <Link href="/people/new" className="add-person-button">
+                +
+              </Link>
+            </div>
             <div className="nav-section-items">
               {people.map(person => (
                 <Link 
@@ -513,6 +524,49 @@ export default function PersonDetailPage() {
                   </div>
                 </Link>
               ))}
+              
+              {people.length === 0 && (
+                <div className="empty-people">
+                  <Link href="/people/new" className="create-first-person" onClick={() => setMobileMenuOpen(false)}>
+                    🤲 Add your first team member
+                  </Link>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="nav-section">
+            <div className="nav-section-header">
+              <h2 className="nav-section-title">Topics</h2>
+              <Link href="/topics/new" className="add-topic-button">
+                +
+              </Link>
+            </div>
+            <div className="nav-section-items">
+              {topics.map(topic => (
+                <Link 
+                  key={topic.id} 
+                  href={`/topics/${topic.id}`} 
+                  className="nav-item"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <span className="nav-item-emoji">💬</span>
+                  <div className="nav-item-content">
+                    <span className="nav-item-name">{topic.title}</span>
+                    <span className="nav-item-subtitle">
+                      {topic.participants.length} participants
+                    </span>
+                  </div>
+                </Link>
+              ))}
+              
+              {topics.length === 0 && (
+                <div className="empty-topics">
+                  <Link href="/topics/new" className="create-first-topic" onClick={() => setMobileMenuOpen(false)}>
+                    💬 Create your first topic
+                  </Link>
+                </div>
+              )}
             </div>
           </section>
         </nav>
@@ -604,10 +658,10 @@ export default function PersonDetailPage() {
                   <MessageBubble
                     key={message.id || index}
                     content={message.content}
-                    isUser={message.role === 'user'}
+                    isUser={message.is_user ?? (message.role === 'user')}
                     files={(message as any).files || []} // Pass files if they exist
                     timestamp={new Date(message.created_at)}
-                    avatar={message.role === 'user' ? undefined : 
+                    avatar={message.is_user ?? (message.role === 'user') ? undefined : 
                       (personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer'))
                     }
                   />
@@ -637,7 +691,8 @@ export default function PersonDetailPage() {
                         id: `assistant-${Date.now()}`,
                         person_id: personId,
                         content: streamingMessage.content,
-                        role: 'assistant',
+                        is_user: false,
+                        role: 'assistant', // Legacy field for compatibility
                         created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
                       };
