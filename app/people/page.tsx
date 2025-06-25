@@ -6,12 +6,12 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { usePeople } from '@/lib/contexts/people-context';
 import type { Person } from '@/types/database';
+import { Sidebar } from '@/components/Sidebar';
 
 export default function PeoplePage() {
   const { people, isLoading } = usePeople(); // Use context instead of local state
   const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState<any>(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -59,13 +59,7 @@ export default function PeoplePage() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
-  const toggleMobileMenu = () => {
-    setMobileMenuOpen(!mobileMenuOpen);
-  };
 
-  const closeMobileMenu = () => {
-    setMobileMenuOpen(false);
-  };
 
   if (isLoading) {
     return (
@@ -78,86 +72,17 @@ export default function PeoplePage() {
 
   return (
     <div className="conversation-app">
-      {/* Mobile overlay */}
-      <div 
-        className={`mobile-overlay ${mobileMenuOpen ? 'active' : ''}`}
-        onClick={closeMobileMenu}
-      />
-      
-      <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-        <header className="sidebar-header">
-          <h1 className="app-title">🤲 Mano</h1>
-          <p className="app-subtitle">Your management companion</p>
-        </header>
-        
-        <nav className="navigation">
-          <section className="nav-section">
-            <h2 className="nav-section-title">Coach</h2>
-            <div className="nav-section-items">
-              <Link href="/people/general" className="nav-item nav-item--special" onClick={closeMobileMenu}>
-                <span className="nav-item-emoji">🤲</span>
-                <div className="nav-item-content">
-                  <span className="nav-item-name">General</span>
-                  <span className="nav-item-subtitle">Management coaching</span>
-                </div>
-              </Link>
-            </div>
-          </section>
-          
-          <section className="nav-section">
-            <div className="nav-section-header">
-              <h2 className="nav-section-title">Your Team</h2>
-              <Link href="/people/new" className="add-person-button">
-                +
-              </Link>
-            </div>
-            <div className="nav-section-items">
-              {people.map(person => (
-                <Link key={person.id} href={`/people/${person.id}`} className="nav-item" onClick={closeMobileMenu}>
-                  <span className="nav-item-emoji">
-                    {getRelationshipEmoji(person.relationship_type || 'peer')}
-                  </span>
-                  <div className="nav-item-content">
-                    <span className="nav-item-name">{person.name}</span>
-                    <span className="nav-item-subtitle">{person.role || getRelationshipLabel(person.relationship_type || 'peer')}</span>
-                  </div>
-                </Link>
-              ))}
-              
-              {people.length === 0 && (
-                <div className="empty-people">
-                  <Link href="/people/new" className="create-first-person" onClick={closeMobileMenu}>
-                    🤲 Add your first team member
-                  </Link>
-                </div>
-              )}
-            </div>
-          </section>
-        </nav>
-        
-        <div className="nav-add-person">
-          <Link href="/people/new" className="add-person-nav-button" onClick={closeMobileMenu}>
-            <span>🤲</span>
-            <span>Add Person</span>
-          </Link>
-        </div>
-      </aside>
+      <Sidebar />
 
-      <main className={`main-content ${mobileMenuOpen ? 'mobile-pushed' : ''}`}>
-        <div className={`people-container ${mobileMenuOpen ? 'mobile-pushed' : ''}`}>
+      <main className="main-content">
+        <div className="people-container">
           <header className="people-header">
             <div className="conversation-header-content">
               <h1 className="people-title">👋 Your People</h1>
               <p className="people-subtitle">Manage relationships with your team and stakeholders</p>
             </div>
             
-            <button 
-              className="mobile-menu-button"
-              onClick={toggleMobileMenu}
-              aria-label="Toggle menu"
-            >
-              ☰
-            </button>
+
             
             {user && (
               <div style={{ position: 'absolute', top: 'var(--space-2xl)', right: 'var(--space-2xl)', display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>

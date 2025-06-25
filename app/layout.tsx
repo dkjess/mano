@@ -51,8 +51,8 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="Mano" />
         <meta name="mobile-web-app-capable" content="yes" />
         
-        {/* Viewport meta tag for responsive design */}
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+        {/* Viewport meta tag for responsive design - optimized for mobile */}
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
         
         {/* Prevent iOS from detecting phone numbers */}
         <meta name="format-detection" content="telephone=no" />
