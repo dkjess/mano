@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { usePeople } from '@/lib/contexts/people-context';
 import { useTopicConversation } from '@/lib/hooks/useTopicConversation';
 import { useTopics } from '@/lib/hooks/useTopics';
+import { Sidebar } from '@/components/Sidebar';
 import { EnhancedChatInput } from '@/components/chat/EnhancedChatInput';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { useFileDropZone } from '@/lib/hooks/useFileDropZone';
@@ -16,7 +17,6 @@ import type { Message } from '@/types/database';
 export default function TopicPage() {
   const params = useParams();
   const topicId = params.topicId as string;
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { people } = usePeople();
@@ -144,108 +144,11 @@ export default function TopicPage() {
 
   return (
     <div className="conversation-app">
-      {/* Mobile overlay */}
-      <div 
-        className={`mobile-overlay ${mobileMenuOpen ? 'active' : ''}`}
-        onClick={() => setMobileMenuOpen(false)}
+      <Sidebar 
+        currentTopicId={topicId}
       />
-      
-      <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-        <header className="sidebar-header">
-          <h1 className="app-title">🤲 Mano</h1>
-          <p className="app-subtitle">Your management companion</p>
-        </header>
-        
-        <nav className="navigation">
-          <section className="nav-section">
-            <h2 className="nav-section-title">Coach</h2>
-            <div className="nav-section-items">
-              <Link href="/people/general" className="nav-item nav-item--special">
-                <span className="nav-item-emoji">🤲</span>
-                <div className="nav-item-content">
-                  <span className="nav-item-name">General</span>
-                  <span className="nav-item-subtitle">Management coaching</span>
-                </div>
-              </Link>
-            </div>
-          </section>
-          
-          <section className="nav-section">
-            <div className="nav-section-header">
-              <h2 className="nav-section-title">Your Team</h2>
-              <Link href="/people/new" className="add-person-button">
-                +
-              </Link>
-            </div>
-            <div className="nav-section-items">
-              {people.map(person => (
-                <Link key={person.id} href={`/people/${person.id}`} className="nav-item">
-                  <span className="nav-item-emoji">
-                    {getRelationshipEmoji(person.relationship_type || 'peer')}
-                  </span>
-                  <div className="nav-item-content">
-                    <span className="nav-item-name">{person.name}</span>
-                    <span className="nav-item-subtitle">
-                      {person.role || person.relationship_type}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-              
-              {people.length === 0 && (
-                <div className="empty-people">
-                  <Link href="/people/new" className="create-first-person">
-                    🤲 Add your first team member
-                  </Link>
-                </div>
-              )}
-            </div>
-          </section>
 
-          <section className="nav-section">
-            <div className="nav-section-header">
-              <h2 className="nav-section-title">Topics</h2>
-              <Link href="/topics/new" className="add-topic-button">
-                +
-              </Link>
-            </div>
-            <div className="nav-section-items">
-              {topics.map(t => (
-                <Link 
-                  key={t.id} 
-                  href={`/topics/${t.id}`} 
-                  className={`nav-item ${topicId === t.id ? 'active' : ''}`}
-                >
-                  <span className="nav-item-emoji">💬</span>
-                  <div className="nav-item-content">
-                    <span className="nav-item-name">{t.title}</span>
-                    <span className="nav-item-subtitle">
-                      {t.participants.length} participants
-                    </span>
-                  </div>
-                </Link>
-              ))}
-              
-              {topics.length === 0 && (
-                <div className="empty-topics">
-                  <Link href="/topics/new" className="create-first-topic">
-                    💬 Create your first topic
-                  </Link>
-                </div>
-              )}
-            </div>
-          </section>
-        </nav>
-        
-        <div className="nav-add-person">
-          <Link href="/people/new" className="add-person-nav-button">
-            <span>🤲</span>
-            <span>Add Person</span>
-          </Link>
-        </div>
-      </aside>
-
-      <main className={`main-content ${mobileMenuOpen ? 'mobile-pushed' : ''}`}>
+      <main className="main-content">
         <ChatDropZone
           isDragActive={isDragActive}
           onDragEnter={handleDragEnter}
@@ -264,13 +167,7 @@ export default function TopicPage() {
                   {getParticipantNames()}
                 </p>
               </div>
-              <button 
-                className="mobile-menu-button"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                aria-label="Toggle menu"
-              >
-                ☰
-              </button>
+              
             </header>
 
             <div className="conversation-messages">
@@ -310,7 +207,7 @@ export default function TopicPage() {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className={mobileMenuOpen ? 'mobile-pushed' : ''}>
+            <div>
               <EnhancedChatInput
                 onSend={handleSendMessage}
                 disabled={isLoading}
