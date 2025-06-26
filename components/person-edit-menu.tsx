@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { personDeletionService, type DeletePersonData } from '@/lib/person-deletion'
 import type { Person } from '@/types/database'
+import { getHomeUrl } from '@/lib/navigation-helpers'
 
 interface PersonEditMenuProps {
   person: Person;
@@ -511,8 +512,8 @@ export default function PersonEditMenu({
         onPersonDeleted?.();
         onClose();
         
-        // Navigate to general chat
-        router.push('/people/general');
+        // Navigate to home
+        getHomeUrl().then(url => router.push(url));
         
         // Show success message (you could use a toast library here)
         console.log(result.message);

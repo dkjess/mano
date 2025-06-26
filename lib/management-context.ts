@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Person, Message } from '@/types/database';
 import { getPeople, getMessages } from './database';
+import { getOrCreateGeneralTopic } from './general-topic-server';
 
 export interface TeamContext {
   totalPeople: number;
@@ -19,9 +20,19 @@ export interface PersonContext {
   conversationSummary: string;
 }
 
+export interface TopicContext {
+  title: string;
+  description?: string;
+  participantCount: number;
+  recentTopics: string[];
+  conversationSummary: string;
+  isGeneral: boolean;
+}
+
 export interface ManagementContextData {
   teamContext: TeamContext;
   allPeople: PersonContext[];
+  allTopics: TopicContext[];
   crossConversationInsights: string[];
   contextSummary: string;
 }
@@ -32,7 +43,9 @@ export interface ManagementContextData {
 export async function gatherManagementContext(
   userId: string,
   currentPersonId: string,
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  currentTopicId?: string,
+  isTopicConversation: boolean = false
 ): Promise<ManagementContextData> {
   try {
     // Get all people in the user's network
@@ -49,29 +62,68 @@ export async function gatherManagementContext(
       })
     );
     
-    // Include general assistant conversations in context gathering
+    // Get topic context including General topic conversations
+    let allTopics: TopicContext[] = [];
     let generalMessages: Message[] = [];
+    
     try {
-      // Get general messages directly with user_id filtering
-      const { data, error } = await supabase
+      // Get the General topic for this user
+      const generalTopic = await getOrCreateGeneralTopic(userId, supabase);
+      
+      // Get General topic messages
+      const { data: generalTopicMessages, error: generalError } = await supabase
         .from('messages')
         .select('*')
-        .eq('person_id', 'general')
+        .eq('topic_id', generalTopic.id)
         .eq('user_id', userId)
         .order('created_at', { ascending: true });
       
-      if (error) throw error;
-      generalMessages = data || [];
+      if (generalError) throw generalError;
+      generalMessages = generalTopicMessages || [];
+      
+      // Build General topic context
+      if (generalMessages.length > 0) {
+        const generalContext = buildTopicContext(generalTopic, generalMessages, true);
+        allTopics.push(generalContext);
+      }
+      
+      // Get other topics if we're in topic conversation mode
+      if (isTopicConversation && currentTopicId) {
+        const { data: topicsData, error: topicsError } = await supabase
+          .from('topics')
+          .select('*')
+          .eq('user_id', userId)
+          .neq('id', generalTopic.id); // Exclude General topic as it's already handled
+        
+        if (topicsError) throw topicsError;
+        
+        // Build context for other topics
+        const otherTopicContexts = await Promise.all(
+          (topicsData || []).map(async (topic) => {
+            const { data: topicMessages } = await supabase
+              .from('messages')
+              .select('*')
+              .eq('topic_id', topic.id)
+              .eq('user_id', userId)
+              .order('created_at', { ascending: true });
+            
+            return buildTopicContext(topic, topicMessages || [], false);
+          })
+        );
+        
+        allTopics.push(...otherTopicContexts);
+      }
     } catch (error) {
-      // General messages might not exist, that's okay
-      console.log('No general messages found or error retrieving them:', error);
+      console.log('No general topic found or error retrieving topic data:', error);
     }
     
     // Generate cross-conversation insights
     const crossConversationInsights = generateCrossConversationInsights(
       peopleContexts, 
+      allTopics,
       generalMessages,
-      currentPersonId
+      currentPersonId,
+      isTopicConversation
     );
     
     // Create overall context summary
@@ -80,6 +132,7 @@ export async function gatherManagementContext(
     return {
       teamContext,
       allPeople: peopleContexts,
+      allTopics,
       crossConversationInsights,
       contextSummary
     };
@@ -96,6 +149,7 @@ export async function gatherManagementContext(
         teamOverview: 'Unable to gather team context at this time.'
       },
       allPeople: [],
+      allTopics: [],
       crossConversationInsights: [],
       contextSummary: 'Limited context available.'
     };
@@ -129,6 +183,24 @@ function buildTeamContext(people: Person[]): TeamContext {
     recentActivity: [], // Will be populated by analyzing recent messages
     managementChallenges: [], // Will be identified from conversation patterns
     teamOverview
+  };
+}
+
+/**
+ * Builds context for a topic based on its conversation history
+ */
+function buildTopicContext(topic: any, messages: Message[], isGeneral: boolean): TopicContext {
+  const recentMessages = messages.slice(-10); // Last 10 messages
+  const recentTopics = extractTopicsFromMessages(recentMessages);
+  const conversationSummary = generateTopicConversationSummary(topic, recentMessages, isGeneral);
+  
+  return {
+    title: topic.title,
+    description: topic.description,
+    participantCount: topic.participants?.length || 0,
+    recentTopics,
+    conversationSummary,
+    isGeneral
   };
 }
 
@@ -179,6 +251,32 @@ function extractTopicsFromMessages(messages: Message[]): string[] {
 }
 
 /**
+ * Generates a brief summary of recent conversation for a topic
+ */
+function generateTopicConversationSummary(topic: any, messages: Message[], isGeneral: boolean): string {
+  if (messages.length === 0) {
+    return isGeneral ? 'No recent general management conversations.' : `No recent conversations in ${topic.title}.`;
+  }
+  
+  const recentUserMessages = messages
+    .filter(m => m.is_user)
+    .slice(-3); // Last 3 user messages
+  
+  if (recentUserMessages.length === 0) {
+    return isGeneral ? 'Recent general management conversation activity.' : `Recent activity in ${topic.title}.`;
+  }
+  
+  const topics = extractTopicsFromMessages(messages);
+  if (topics.length > 0) {
+    return isGeneral ? 
+      `Recent management discussions about: ${topics.join(', ')}.` :
+      `Recent discussions in ${topic.title} about: ${topics.join(', ')}.`;
+  }
+  
+  return isGeneral ? 'Active general management conversations.' : `Active conversations in ${topic.title}.`;
+}
+
+/**
  * Generates a brief summary of recent conversation with a person
  */
 function generateConversationSummary(person: Person, messages: Message[]): string {
@@ -207,25 +305,45 @@ function generateConversationSummary(person: Person, messages: Message[]): strin
  */
 function generateCrossConversationInsights(
   peopleContexts: PersonContext[],
+  topicContexts: TopicContext[],
   generalMessages: Message[],
-  currentPersonId: string
+  currentPersonId: string,
+  isTopicConversation: boolean = false
 ): string[] {
   const insights: string[] = [];
   
-  // Identify common themes across conversations
-  const allTopics = peopleContexts.flatMap(p => p.recentTopics);
+  // Identify common themes across people conversations
+  const allPeopleTopics = peopleContexts.flatMap(p => p.recentTopics);
+  
+  // Include topics from topic conversations
+  const allTopicThemes = topicContexts.flatMap(t => t.recentTopics);
+  
+  // Combine all topics for analysis
+  const allTopics = [...allPeopleTopics, ...allTopicThemes];
   const topicCounts: { [key: string]: number } = {};
   
   allTopics.forEach(topic => {
     topicCounts[topic] = (topicCounts[topic] || 0) + 1;
   });
   
-  // Find topics mentioned by multiple people
+  // Find topics mentioned across multiple conversations
   Object.entries(topicCounts).forEach(([topic, count]) => {
     if (count >= 2) {
-      insights.push(`${topic} is a recurring theme across multiple team conversations`);
+      insights.push(`${topic} is a recurring theme across multiple conversations`);
     }
   });
+  
+  // Add topic-specific insights
+  const generalTopic = topicContexts.find(t => t.isGeneral);
+  if (generalTopic && generalTopic.recentTopics.length > 0) {
+    insights.push(`Recent general management focus: ${generalTopic.recentTopics.slice(0, 3).join(', ')}`);
+  }
+  
+  // Insights about topic participation
+  const activeTopics = topicContexts.filter(t => !t.isGeneral && t.participantCount > 0);
+  if (activeTopics.length > 0) {
+    insights.push(`Managing ${activeTopics.length} active topic${activeTopics.length > 1 ? 's' : ''} with team participation`);
+  }
   
   // Analyze team composition for insights
   const relationships = peopleContexts.map(p => p.relationshipType);
@@ -324,6 +442,21 @@ export function formatContextForPrompt(context: ManagementContextData): string {
       .slice(0, 5) // Show context for up to 5 most active conversations
       .forEach(person => {
         sections.push(`• ${person.name} (${person.relationshipType}): Recent topics - ${person.recentTopics.join(', ')}`);
+      });
+  }
+  
+  // Add relevant topic context (summarized)
+  if (context.allTopics.length > 0) {
+    sections.push(`\n=== TOPIC DISCUSSIONS CONTEXT ===`);
+    context.allTopics
+      .filter(topic => topic.recentTopics.length > 0)
+      .slice(0, 5) // Show context for up to 5 most active topic conversations
+      .forEach(topic => {
+        const contextType = topic.isGeneral ? 'General Management' : `Topic: ${topic.title}`;
+        sections.push(`• ${contextType}: Recent themes - ${topic.recentTopics.join(', ')}`);
+        if (!topic.isGeneral && topic.participantCount > 0) {
+          sections.push(`  ${topic.participantCount} participant${topic.participantCount === 1 ? '' : 's'}`);
+        }
       });
   }
   

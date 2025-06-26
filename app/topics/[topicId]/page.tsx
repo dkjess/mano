@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { usePeople } from '@/lib/contexts/people-context';
 import { useTopicConversation } from '@/lib/hooks/useTopicConversation';
 import { useTopics } from '@/lib/hooks/useTopics';
-import { Sidebar } from '@/components/Sidebar';
+import { MobileLayout } from '@/components/MobileLayout';
 import { EnhancedChatInput } from '@/components/chat/EnhancedChatInput';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { useFileDropZone } from '@/lib/hooks/useFileDropZone';
@@ -143,12 +143,9 @@ export default function TopicPage() {
   }
 
   return (
-    <div className="conversation-app">
-      <Sidebar 
-        currentTopicId={topicId}
-      />
-
-      <main className="main-content">
+    <>
+      {/* Desktop: Direct content, sidebar handled by root layout */}
+      <div className="hidden lg:block">
         <ChatDropZone
           isDragActive={isDragActive}
           onDragEnter={handleDragEnter}
@@ -219,7 +216,86 @@ export default function TopicPage() {
             </div>
           </div>
         </ChatDropZone>
-      </main>
-    </div>
+      </div>
+
+      {/* Mobile: Use MobileLayout with conversation header */}
+      <MobileLayout
+        title={topic?.title || "Topic"}
+        subtitle={getParticipantNames()}
+        showBackButton={true}
+        backHref="/conversations"
+      >
+        <ChatDropZone
+          isDragActive={isDragActive}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          fileInputRef={fileInputRef}
+          onFileInputChange={handleFileInputChange}
+          disabled={isLoading}
+        >
+          <div className="conversation-container">
+            <header className="conversation-header">
+              <div className="conversation-header-content">
+                <h1 className="conversation-title">💬 {topic.title}</h1>
+                <p className="conversation-subtitle">
+                  {getParticipantNames()}
+                </p>
+              </div>
+              
+            </header>
+
+            <div className="conversation-messages">
+              {messages.length === 0 && !isLoading ? (
+                <div className="empty-state">
+                  <div className="empty-state-emoji">💬</div>
+                  <h3 className="empty-state-title">Start the discussion</h3>
+                  <p className="empty-state-subtitle">
+                    Begin your conversation about {topic.title}
+                  </p>
+                </div>
+              ) : (
+                <div className="message-group">
+                  {messages.map((message, index) => (
+                    <MessageBubble
+                      key={message.id || index}
+                      content={message.content}
+                      isUser={message.is_user ?? (message.role === 'user')}
+                      timestamp={new Date(message.created_at)}
+                      avatar={message.is_user ?? (message.role === 'user') ? undefined : '💬'}
+                    />
+                  ))}
+                  
+                  {/* Show streaming message */}
+                  {streamingMessage && (
+                    <MessageBubble
+                      key={streamingMessage.id}
+                      content={streamingMessage.content}
+                      isUser={false}
+                      timestamp={new Date()}
+                      avatar="💬"
+                      isStreaming={streamingMessage.isStreaming}
+                    />
+                  )}
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div>
+              <EnhancedChatInput
+                onSend={handleSendMessage}
+                disabled={isLoading}
+                placeholder={`Discuss ${topic.title}...`}
+                files={files}
+                onRemoveFile={removeDroppedFile}
+                onOpenFileDialog={openFileDialog}
+              />
+            </div>
+          </div>
+        </ChatDropZone>
+      </MobileLayout>
+    </>
   );
 } 

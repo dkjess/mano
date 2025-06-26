@@ -1,0 +1,200 @@
+/* Mobile Layout Styles */
+.mobile-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: white;
+}
+
+.mobile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: white;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.mobile-back-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+  margin-right: 0.75rem;
+}
+
+.mobile-back-button:hover {
+  background-color: #f3f4f6;
+}
+
+.mobile-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-header-action {
+  margin-left: 0.75rem;
+}
+
+.mobile-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Conversation List Styles */
+.conversation-list-item {
+  display: block;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background-color 0.2s;
+}
+
+.conversation-list-item:hover {
+  background-color: #f9fafb;
+}
+
+.conversation-list-item.active {
+  background-color: #eff6ff;
+  border-color: #dbeafe;
+}
+
+.conversation-emoji {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.conversation-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.conversation-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conversation-subtitle {
+  font-size: 0.875rem;
+  color: #4b5563;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.125rem;
+}
+
+.conversation-preview {
+  font-size: 0.875rem;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.25rem;
+}
+
+.conversation-timestamp {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-left: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Group Headers */
+.group-header {
+  padding: 0.5rem 1rem;
+  background-color: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.group-header h3 {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* Empty State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 1.5rem;
+  text-align: center;
+}
+
+.empty-state-emoji {
+  font-size: 3.75rem;
+  margin-bottom: 1rem;
+}
+
+.empty-state-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 0.5rem;
+}
+
+.empty-state-subtitle {
+  color: #4b5563;
+  margin-bottom: 1.5rem;
+}
+
+.empty-state-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 20rem;
+}
+
+.empty-state-actions a {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.empty-state-actions a.primary {
+  background-color: #2563eb;
+  color: white;
+}
+
+.empty-state-actions a.primary:hover {
+  background-color: #1d4ed8;
+}
+
+.empty-state-actions a.secondary {
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.empty-state-actions a.secondary:hover {
+  background-color: #f9fafb;
+}

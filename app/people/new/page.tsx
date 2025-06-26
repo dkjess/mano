@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePeople } from '@/lib/contexts/people-context';
 import Link from 'next/link';
+import { getHomeUrl } from '@/lib/navigation-helpers';
 
 type Step = 'name' | 'role' | 'relationship' | 'context' | 'complete';
 
@@ -20,6 +21,7 @@ export default function NewPersonPage() {
     context: ''
   });
   const [loading, setLoading] = useState(false);
+  const [homeUrl, setHomeUrl] = useState('/conversations');
 
   // Reset form when component mounts to prevent stale data
   useEffect(() => {
@@ -31,6 +33,11 @@ export default function NewPersonPage() {
     });
     setStep('name');
     setLoading(false);
+  }, []);
+
+  // Get the home URL on mount
+  useEffect(() => {
+    getHomeUrl().then(setHomeUrl);
   }, []);
 
   const createPerson = async (includeContext: boolean = true) => {
@@ -314,7 +321,7 @@ export default function NewPersonPage() {
       <div className="w-full">
         <div className="bg-white rounded-lg p-8 shadow-sm border border-gray-200">
           <div className="flex items-center justify-between mb-8">
-            <Link href="/people/general" className="text-gray-400 hover:text-gray-600">
+            <Link href={homeUrl} className="text-gray-400 hover:text-gray-600">
               ✕
             </Link>
             <div className="text-sm text-gray-500">

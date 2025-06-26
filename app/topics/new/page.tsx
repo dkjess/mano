@@ -49,70 +49,7 @@ export default function NewTopicPage() {
   };
 
   return (
-    <div className="conversation-app">
-      <aside className="sidebar">
-        <header className="sidebar-header">
-          <h1 className="app-title">🤲 Mano</h1>
-          <p className="app-subtitle">Your management companion</p>
-        </header>
-        
-        <nav className="navigation">
-          <section className="nav-section">
-            <h2 className="nav-section-title">Coach</h2>
-            <div className="nav-section-items">
-              <Link href="/people/general" className="nav-item nav-item--special">
-                <span className="nav-item-emoji">🤲</span>
-                <div className="nav-item-content">
-                  <span className="nav-item-name">General</span>
-                  <span className="nav-item-subtitle">Management coaching</span>
-                </div>
-              </Link>
-            </div>
-          </section>
-          
-          <section className="nav-section">
-            <div className="nav-section-header">
-              <h2 className="nav-section-title">Your Team</h2>
-              <Link href="/people/new" className="add-person-button">
-                +
-              </Link>
-            </div>
-            <div className="nav-section-items">
-              {people.map(person => (
-                <Link key={person.id} href={`/people/${person.id}`} className="nav-item">
-                  <span className="nav-item-emoji">
-                    {getRelationshipEmoji(person.relationship_type || 'peer')}
-                  </span>
-                  <div className="nav-item-content">
-                    <span className="nav-item-name">{person.name}</span>
-                    <span className="nav-item-subtitle">
-                      {person.role || person.relationship_type}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-              
-              {people.length === 0 && (
-                <div className="empty-people">
-                  <Link href="/people/new" className="create-first-person">
-                    🤲 Add your first team member
-                  </Link>
-                </div>
-              )}
-            </div>
-          </section>
-        </nav>
-        
-        <div className="nav-add-person">
-          <Link href="/people/new" className="add-person-nav-button">
-            <span>🤲</span>
-            <span>Add Person</span>
-          </Link>
-        </div>
-      </aside>
-
-      <main className="main-content">
-        <div className="new-topic-page">
+    <div className="new-topic-page">
           <div className="new-topic-container">
             <header className="conversation-header">
               <div className="conversation-header-content">
@@ -181,14 +118,12 @@ export default function NewTopicPage() {
                 >
                   {isCreating ? '🤲 Creating...' : '💬 Create Topic'}
                 </button>
-                <Link href="/people/general" className="cancel-button">
+                <Link href="/conversations" className="cancel-button">
                   Cancel
                 </Link>
               </div>
             </div>
-          </div>
         </div>
-      </main>
     </div>
   );
 } 

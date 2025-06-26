@@ -21,7 +21,7 @@ import { useFileDropZone, DroppedFile } from '@/lib/hooks/useFileDropZone';
 import { ChatDropZone } from '@/components/chat/ChatDropZone';
 import { MessageFile } from '@/types/database';
 import { useTopics } from '@/lib/hooks/useTopics';
-import { Sidebar } from '@/components/Sidebar';
+import { MobileLayout } from '@/components/MobileLayout';
 
 
 
@@ -453,20 +453,17 @@ export default function PersonDetailPage() {
       <div className="empty-state">
         <div className="empty-state-emoji">🤷</div>
         <h3 className="empty-state-title">Person not found</h3>
-        <Link href="/people/general" className="add-person-button">
-          👈 Back to General Chat
+        <Link href="/conversations" className="add-person-button">
+          👈 Back to Conversations
         </Link>
       </div>
     );
   }
 
   return (
-    <div className="conversation-app">
-      <Sidebar 
-        currentPersonId={personId}
-      />
-
-      <main className="main-content">
+    <>
+      {/* Desktop: Direct content, sidebar handled by root layout */}
+      <div className="hidden lg:block">
         <ChatDropZone
           isDragActive={isDragActive}
           onDragEnter={handleDragEnter}
@@ -685,7 +682,234 @@ export default function PersonDetailPage() {
           )}
           </div>
         </ChatDropZone>
-      </main>
-    </div>
+      </div>
+
+      {/* Mobile: Use MobileLayout with conversation header */}
+      <MobileLayout
+        title={person?.name || "Conversation"}
+        subtitle={person?.role || getRelationshipLabel(person?.relationship_type || 'peer')}
+        showBackButton={true}
+        backHref="/conversations"
+      >
+        <ChatDropZone
+          isDragActive={isDragActive}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          fileInputRef={fileInputRef}
+          onFileInputChange={handleFileInputChange}
+          disabled={sending || streamingMessage?.isStreaming}
+        >
+          <div className="conversation-container">
+          {isProfileSetupConversation() && person && personId !== 'general' ? (
+            <PersonSetupChatHeader
+              person={person}
+              chatId={personId}
+              onEditProfile={handleEditProfile}
+            />
+          ) : (
+            <header className="conversation-header">
+              <div 
+                className="conversation-header-content"
+                onClick={personId !== 'general' ? handleOpenPersonEditMenu : undefined}
+                style={{ 
+                  cursor: personId !== 'general' ? 'pointer' : 'default'
+                }}
+                title={personId !== 'general' ? 'Click to edit profile' : undefined}
+              >
+                <h1 className="conversation-title">
+                  {personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')} {person.name}
+                </h1>
+                <p className="conversation-subtitle">
+                  {personId === 'general' 
+                    ? 'Management coaching and strategic advice' 
+                    : person.role || getRelationshipLabel(person.relationship_type || 'peer')
+                  }
+                </p>
+              </div>
+              
+            </header>
+          )}
+
+          <div className="conversation-messages">
+            {/* Loading state for messages */}
+            {messagesLoading && messages.length === 0 && (
+              <div className="loading-state">
+                <div className="loading-emoji">🤲</div>
+                <div className="loading-text">Loading conversation...</div>
+              </div>
+            )}
+
+            {messages.length === 0 && !sending && !streamingMessage && !messagesLoading ? (
+              <div className="empty-state">
+                <div className="empty-state-emoji">💬</div>
+                <h3 className="empty-state-title">Start the conversation</h3>
+                <p className="empty-state-subtitle">
+                  {personId === 'general' 
+                    ? 'Ask for management advice, discuss strategy, or work through challenges'
+                    : `Begin your conversation with ${person.name}`
+                  }
+                </p>
+              </div>
+            ) : (
+              <div className="message-group">
+                {/* Render existing messages with new MessageBubble component */}
+                {messages.map((message, index) => (
+                  <MessageBubble
+                    key={message.id || index}
+                    content={message.content}
+                    isUser={message.is_user ?? (message.role === 'user')}
+                    files={(message as any).files || []} // Pass files if they exist
+                    timestamp={new Date(message.created_at)}
+                    avatar={message.is_user ?? (message.role === 'user') ? undefined : 
+                      (personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer'))
+                    }
+                  />
+                ))}
+                
+                {/* Show loading state when sending */}
+                {sending && (
+                  <MessageBubble
+                    content=""
+                    isUser={false}
+                    isLoading={true}
+                    avatar={personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
+                  />
+                )}
+
+                {/* Show streaming message */}
+                {streamingMessage && (
+                  <MessageBubble
+                    content={streamingMessage.content}
+                    isUser={false}
+                    isStreaming={streamingMessage.isStreaming}
+                    timestamp={new Date()}
+                    avatar={personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
+                    onComplete={() => {
+                      // When streaming completes, add the final message to permanent state
+                      const finalMessage: Message = {
+                        id: `assistant-${Date.now()}`,
+                        person_id: personId,
+                        content: streamingMessage.content,
+                        is_user: false,
+                        role: 'assistant', // Legacy field for compatibility
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                      };
+                      addMessage(finalMessage);
+                      clearStreamingMessage();
+                    }}
+                  />
+                )}
+
+                {personSuggestion && (
+                  <PersonSuggestion
+                    detectedPeople={personSuggestion.detectedPeople}
+                    onPersonAdded={handlePersonAdded}
+                    onDismiss={handleDismissSuggestion}
+                  />
+                )}
+
+                {profilePrompt && person && (
+                  <ProfileCompletionPrompt
+                    personId={person.id}
+                    personName={person.name}
+                    prompt={profilePrompt}
+                    onComplete={handleProfileComplete}
+                    onDismiss={handleProfileDismiss}
+                  />
+                )}
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Enhanced Chat Input */}
+          <div>
+            <EnhancedChatInput
+              onSend={handleSendMessage}
+              disabled={sending || streamingMessage?.isStreaming}
+              placeholder={personId === 'general' 
+                ? 'Ask for management guidance...' 
+                : `Message ${person?.name || 'Mano'}...`
+              }
+              files={files}
+              onRemoveFile={removeDroppedFile}
+              onOpenFileDialog={openFileDialog}
+            />
+          </div>
+
+          {retryData?.shouldShow && (
+            <div style={{
+              position: 'fixed',
+              bottom: '120px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'var(--color-white)',
+              border: '1px solid var(--color-gray-200)',
+              borderRadius: 'var(--space-sm)',
+              padding: 'var(--space-md) var(--space-lg)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-md)',
+              fontFamily: 'var(--font-secondary)',
+              fontSize: '14px'
+            }}>
+              <span>Message failed to send</span>
+              <button
+                onClick={(e) => sendMessage(e, retryData.message)}
+                style={{
+                  background: 'var(--color-black)',
+                  color: 'var(--color-white)',
+                  border: 'none',
+                  padding: 'var(--space-sm) var(--space-md)',
+                  borderRadius: 'var(--space-sm)',
+                  fontSize: '12px',
+                  cursor: 'pointer'
+                }}
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => setRetryData(null)}
+                style={{
+                  background: 'transparent',
+                  color: 'var(--color-gray-500)',
+                  border: 'none',
+                  padding: 'var(--space-sm)',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Profile Edit Form Modal */}
+          {showProfileEditForm && person && (
+            <ProfileEditForm
+              person={person}
+              onSave={handleProfileSaved}
+              onClose={handleCloseProfileForm}
+            />
+          )}
+
+          {/* Person Edit Menu Modal */}
+          {showPersonEditMenu && person && personId !== 'general' && (
+            <PersonEditMenu
+              person={person}
+              chatId={personId}
+              onClose={handleClosePersonEditMenu}
+              onPersonUpdated={handlePersonUpdated}
+              onPersonDeleted={handlePersonDeleted}
+            />
+          )}
+          </div>
+        </ChatDropZone>
+      </MobileLayout>
+    </>
   );
 }

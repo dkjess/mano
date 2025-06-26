@@ -34,12 +34,28 @@ export function SignUpForm({
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
       });
       if (error) throw error;
-      router.push("/people/general");
+      
+      // For email signups, we need to create the General topic and redirect
+      if (data.user) {
+        try {
+          // Import the client-side helper
+          const { getOrCreateGeneralTopicClient } = await import("@/lib/general-topic");
+          const generalTopic = await getOrCreateGeneralTopicClient(data.user.id);
+          router.push(`/topics/${generalTopic.id}`);
+        } catch (topicError) {
+          console.error('Error creating General topic:', topicError);
+          // Fallback to people page if topic creation fails
+          router.push("/people");
+        }
+      } else {
+        // Fallback if user data is not available
+        router.push("/people");
+      }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -57,7 +73,7 @@ export function SignUpForm({
         provider: 'google',
         options: {
           scopes: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly',
-          redirectTo: `${window.location.origin}/auth/callback?redirect_to=/people/general`
+          redirectTo: `${window.location.origin}/auth/callback` // Remove specific redirect, let callback handle it
         }
       });
       if (error) throw error;
