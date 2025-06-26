@@ -61,6 +61,7 @@ class VectorService {
       threshold?: number;
       limit?: number;
       personFilter?: string;
+      topicFilter?: string;
     } = {}
   ): Promise<VectorSearchResult[]> {
     try {
@@ -72,7 +73,8 @@ class VectorService {
           match_user_id: userId,
           match_threshold: options.threshold || 0.78,
           match_count: options.limit || 10,
-          person_filter: options.personFilter || null
+          person_filter: options.personFilter || null,
+          topic_filter: options.topicFilter || null
         });
 
       if (error) {
@@ -89,29 +91,30 @@ class VectorService {
   async findSemanticContext(
     userId: string,
     currentQuery: string,
-    currentPersonId: string
+    currentPersonId: string,
+    isTopicConversation: boolean = false,
+    topicId?: string
   ): Promise<{
     similarConversations: VectorSearchResult[];
     crossPersonInsights: VectorSearchResult[];
   }> {
     const [similarConversations, allConversations] = await Promise.all([
-      // Find similar conversations with current person
+      // Find similar conversations with current person/topic
       this.searchSimilarConversations(userId, currentQuery, {
-        personFilter: currentPersonId !== 'general' ? currentPersonId : undefined,
+        personFilter: (!isTopicConversation && currentPersonId !== 'general') ? currentPersonId : undefined,
+        topicFilter: isTopicConversation ? topicId : undefined,
         limit: 5
       }),
       
-      // Find similar conversations with other people (cross-person insights)
-      currentPersonId !== 'general' 
-        ? this.searchSimilarConversations(userId, currentQuery, {
-            limit: 8
-          })
-        : []
+      // Find similar conversations with other people/topics (cross-context insights)
+      this.searchSimilarConversations(userId, currentQuery, {
+        limit: 8
+      })
     ]);
 
-    const crossPersonInsights = currentPersonId !== 'general' 
-      ? allConversations.filter(r => r.person_id !== currentPersonId).slice(0, 3)
-      : [];
+    const crossPersonInsights = isTopicConversation 
+      ? allConversations.filter(r => r.person_id && r.person_id !== 'general').slice(0, 3)
+      : allConversations.filter(r => r.person_id !== currentPersonId).slice(0, 3);
 
     return {
       similarConversations,
@@ -121,11 +124,12 @@ class VectorService {
 
   async storeMessageEmbedding(
     userId: string,
-    personId: string,
+    personIdOrTopicId: string,
     messageId: string,
     content: string,
     messageType: 'user' | 'assistant',
-    metadata: any = {}
+    metadata: any = {},
+    isTopicConversation: boolean = false
   ): Promise<void> {
     try {
       const embedding = await this.generateEmbedding(content);
@@ -134,7 +138,8 @@ class VectorService {
         .from('conversation_embeddings')
         .insert({
           user_id: userId,
-          person_id: personId,
+          person_id: isTopicConversation ? null : personIdOrTopicId,
+          topic_id: isTopicConversation ? personIdOrTopicId : null,
           message_id: messageId,
           content: content,
           embedding: embedding,
@@ -159,13 +164,18 @@ class ManagementContextBuilder {
     this.vectorService = new VectorService(supabase);
   }
 
-  async buildFullContext(currentPersonId: string, currentQuery?: string): Promise<{
+  async buildFullContext(
+    currentPersonId: string, 
+    currentQuery?: string,
+    isTopicConversation: boolean = false,
+    topicId?: string
+  ): Promise<{
     context: ManagementContext;
   }> {
     try {
       const [people, semanticContext] = await Promise.all([
         this.getPeopleOverview(),
-        currentQuery ? this.getSemanticContext(currentQuery, currentPersonId) : Promise.resolve(undefined)
+        currentQuery ? this.getSemanticContext(currentQuery, currentPersonId, isTopicConversation, topicId) : Promise.resolve(undefined)
       ]);
 
       const context: ManagementContext = {
@@ -211,12 +221,19 @@ class ManagementContextBuilder {
     };
   }
 
-  private async getSemanticContext(query: string, currentPersonId: string) {
+  private async getSemanticContext(
+    query: string, 
+    currentPersonId: string, 
+    isTopicConversation: boolean = false,
+    topicId?: string
+  ) {
     try {
       const context = await this.vectorService.findSemanticContext(
         this.userId,
         query,
-        currentPersonId
+        currentPersonId,
+        isTopicConversation,
+        topicId
       );
       
       // Transform to match interface naming
@@ -232,23 +249,36 @@ class ManagementContextBuilder {
   }
 }
 
-function buildSemanticContext(people: any[], semanticContext: any, currentQuery: string): string[] {
+function buildSemanticContext(people: any[], semanticContext: any, currentQuery: string, isTopicConversation: boolean = false): string[] {
   const insights: string[] = [];
 
   // Add relevant past discussions
   if (semanticContext?.similar_conversations?.length > 0) {
     semanticContext.similar_conversations.slice(0, 3).forEach((conv: any) => {
-      const personName = conv.person_id === 'general' ? 'General discussion' : 
-        people.find(p => p.id === conv.person_id)?.name || 'Unknown';
-      insights.push(`Previous ${personName} discussion: "${conv.content.substring(0, 100)}..." (${Math.round(conv.similarity * 100)}% relevant)`);
+      let contextName = 'Unknown';
+      if (conv.topic_id) {
+        contextName = 'Topic discussion';
+      } else if (conv.person_id === 'general') {
+        contextName = 'General discussion';
+      } else if (conv.person_id) {
+        contextName = people.find(p => p.id === conv.person_id)?.name || 'Unknown person';
+      }
+      
+      insights.push(`Previous ${contextName}: "${conv.content.substring(0, 100)}..." (${Math.round(conv.similarity * 100)}% relevant)`);
     });
   }
 
-  // Add cross-person insights
+  // Add cross-context insights (person/topic insights)
   if (semanticContext?.cross_person_insights?.length > 0) {
     semanticContext.cross_person_insights.slice(0, 2).forEach((insight: any) => {
-      const personName = people.find(p => p.id === insight.person_id)?.name || 'Unknown';
-      insights.push(`${personName} pattern: "${insight.content.substring(0, 100)}..."`);
+      let contextName = 'Unknown';
+      if (insight.topic_id) {
+        contextName = 'Topic';
+      } else if (insight.person_id) {
+        contextName = people.find(p => p.id === insight.person_id)?.name || 'Unknown person';
+      }
+      
+      insights.push(`${contextName} pattern: "${insight.content.substring(0, 100)}..."`);
     });
   }
 
@@ -265,15 +295,29 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { person_id, message: userMessage, isTopicConversation, topicTitle, topicId } = body;
+    const { person_id, message: userMessage, topicId } = body;
+    let { isTopicConversation, topicTitle } = body;
 
     if (!person_id || !userMessage) {
       return new Response('person_id and message are required', { status: 400 });
     }
 
-    // Handle special case for 'general' assistant
+    // Handle special case for 'general' assistant - now topic-based
     let person: Person;
+    let actualTopicId = topicId;
+    
     if (person_id === 'general') {
+      // Get or create the General topic
+      try {
+        const { getOrCreateGeneralTopic } = await import('@/lib/general-topic');
+        const generalTopic = await getOrCreateGeneralTopic(user.id, supabase);
+        actualTopicId = generalTopic.id;
+        isTopicConversation = true;
+        topicTitle = 'General';
+      } catch (error) {
+        console.error('Error getting General topic:', error);
+      }
+      
       person = {
         id: 'general',
         user_id: '',
@@ -301,12 +345,12 @@ export async function POST(request: NextRequest) {
 
     // Get conversation history (from topic if applicable, otherwise from person)
     let conversationHistory;
-    if (isTopicConversation && topicId) {
+    if (isTopicConversation && actualTopicId) {
       // For topic conversations, get messages from the topic
       const { data: topicMessages } = await supabase
         .from('messages')
         .select('*')
-        .eq('topic_id', topicId)
+        .eq('topic_id', actualTopicId)
         .order('created_at', { ascending: true });
       conversationHistory = topicMessages || [];
     } else {
@@ -318,7 +362,12 @@ export async function POST(request: NextRequest) {
     let vectorService: VectorService | undefined;
     try {
       const contextBuilder = new ManagementContextBuilder(supabase, user.id);
-      const { context } = await contextBuilder.buildFullContext(person_id, userMessage);
+      const { context } = await contextBuilder.buildFullContext(
+        person_id, 
+        userMessage,
+        isTopicConversation,
+        actualTopicId
+      );
       
       // Convert to expected ManagementContextData format
       const teamContext: TeamContext = {
@@ -345,11 +394,12 @@ export async function POST(request: NextRequest) {
         conversationSummary: `Team member: ${p.name}`
       }));
 
-      const crossConversationInsights = buildSemanticContext(context.people, context.semantic_context, userMessage);
+      const crossConversationInsights = buildSemanticContext(context.people, context.semantic_context, userMessage, isTopicConversation);
 
       managementContext = {
         teamContext,
         allPeople,
+        allTopics: [], // TODO: Add topic context when implementing full topic support
         crossConversationInsights,
         contextSummary: `Team of ${context.people.length} people with vector-enhanced context awareness.`
       };
@@ -362,13 +412,13 @@ export async function POST(request: NextRequest) {
 
     // Save user message first (to topic or person)
     let userMessageRecord;
-    if (isTopicConversation && topicId) {
+    if (isTopicConversation && actualTopicId) {
       // For topic conversations, save to topic messages
       const { data: message, error } = await supabase
         .from('messages')
         .insert({
           content: userMessage,
-          topic_id: topicId,
+          topic_id: actualTopicId,
           person_id: null,
           is_user: true
         })
@@ -429,13 +479,13 @@ export async function POST(request: NextRequest) {
 
             // Save the complete response to database
             let assistantMessage;
-            if (isTopicConversation && topicId) {
+            if (isTopicConversation && actualTopicId) {
               // For topic conversations, save to topic messages
               const { data: message, error } = await supabase
                 .from('messages')
                 .insert({
                   content: fullResponse,
-                  topic_id: topicId,
+                  topic_id: actualTopicId,
                   person_id: null,
                   is_user: false
                 })
@@ -455,20 +505,26 @@ export async function POST(request: NextRequest) {
 
             // Store embeddings for both messages (background task)
             if (vectorService) {
+              const embeddingTarget = isTopicConversation ? actualTopicId : person_id;
+              
               vectorService.storeMessageEmbedding(
                 user.id,
-                person_id,
+                embeddingTarget,
                 userMessageRecord.id,
                 userMessage,
-                'user'
+                'user',
+                {},
+                isTopicConversation
               ).catch(console.error);
               
               vectorService.storeMessageEmbedding(
                 user.id,
-                person_id,
+                embeddingTarget,
                 assistantMessage.id,
                 fullResponse,
-                'assistant'
+                'assistant',
+                {},
+                isTopicConversation
               ).catch(console.error);
             }
 
@@ -500,12 +556,12 @@ export async function POST(request: NextRequest) {
 
             // Save error message
             let errorMessageRecord;
-            if (isTopicConversation && topicId) {
+            if (isTopicConversation && actualTopicId) {
               const { data: message, error } = await supabase
                 .from('messages')
                 .insert({
                   content: errorMessage,
-                  topic_id: topicId,
+                  topic_id: actualTopicId,
                   person_id: null,
                   is_user: false
                 })

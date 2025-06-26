@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { usePeople } from '@/lib/contexts/people-context';
+import { getOrCreateGeneralTopicClient } from '@/lib/general-topic';
 import type { Person } from '@/types/database';
-import { Sidebar } from '@/components/Sidebar';
 
 export default function PeoplePage() {
   const { people, isLoading } = usePeople(); // Use context instead of local state
   const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState<any>(null);
+  const [generalTopicId, setGeneralTopicId] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -22,6 +23,16 @@ export default function PeoplePage() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     setUser(user);
+
+    // Get General topic ID
+    if (user) {
+      try {
+        const generalTopic = await getOrCreateGeneralTopicClient(user.id);
+        setGeneralTopicId(generalTopic.id);
+      } catch (error) {
+        console.error('Error loading General topic:', error);
+      }
+    }
   };
 
   const handleLogout = async () => {
@@ -71,11 +82,7 @@ export default function PeoplePage() {
   }
 
   return (
-    <div className="conversation-app">
-      <Sidebar />
-
-      <main className="main-content">
-        <div className="people-container">
+    <div className="people-container">
           <header className="people-header">
             <div className="conversation-header-content">
               <h1 className="people-title">👋 Your People</h1>
@@ -162,7 +169,10 @@ export default function PeoplePage() {
             <div>
               {/* General Management Assistant - Always show at top when not searching */}
               {!searchTerm && (
-                <Link href="/people/general" className="person-item person-item--special">
+                <Link 
+                  href={generalTopicId ? `/topics/${generalTopicId}` : "/conversations"} 
+                  className="person-item person-item--special"
+                >
                   <div className="person-content">
                     <div className="person-emoji">🤲</div>
                     <div className="person-details">
@@ -201,8 +211,6 @@ export default function PeoplePage() {
           )}
 
 
-        </div>
-      </main>
     </div>
   );
 }

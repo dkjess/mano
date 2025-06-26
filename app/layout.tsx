@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import ServiceWorkerRegistration from "../components/ServiceWorkerRegistration";
 import InstallPrompt from "../components/InstallPrompt";
-import DebugPanel from '@/components/debug/debug-panel'
+import DebugPanel from '@/components/debug/debug-panel';
+import { ClientLayoutWrapper } from '@/components/ClientLayoutWrapper';
 
 export const metadata: Metadata = {
   title: "Mano - Your helping hand in management",
@@ -69,7 +70,9 @@ export default function RootLayout({
       <body>
         <ServiceWorkerRegistration />
         <InstallPrompt />
-        {children}
+        <ClientLayoutWrapper>
+          {children}
+        </ClientLayoutWrapper>
         <DebugPanel />
       </body>
     </html>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { getOrCreateGeneralTopicClient } from '@/lib/general-topic'
 
 export default function HomePage() {
   const [loading, setLoading] = useState(true)
@@ -29,12 +30,29 @@ export default function HomePage() {
         .eq('user_id', user.id)
         .single()
 
-      if (!profile?.onboarding_completed) {
-        // New user - go straight to general chat for onboarding
-        router.push('/people/general')
+      // Check if user is on mobile
+      const isMobile = window.innerWidth < 1024 // lg breakpoint
+      
+      if (isMobile) {
+        // Mobile users go to conversations overview
+        router.push('/conversations')
       } else {
-        // Existing user - go to people overview or last conversation
-        router.push('/people/general')
+        // Desktop users go to General topic
+        try {
+          const generalTopic = await getOrCreateGeneralTopicClient(user.id)
+          
+          if (!profile?.onboarding_completed) {
+            // New user - go straight to General topic for onboarding
+            router.push(`/topics/${generalTopic.id}`)
+          } else {
+            // Existing user - go to General topic (or could be enhanced to remember last conversation)
+            router.push(`/topics/${generalTopic.id}`)
+          }
+        } catch (topicError) {
+          console.error('Error getting General topic:', topicError)
+          // Fallback to people page if topic creation fails
+          router.push('/people')
+        }
       }
     } catch (error) {
       console.error('Error checking user status:', error)

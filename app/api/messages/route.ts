@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getMessages, createMessage } from '@/lib/database';
+import { getOrCreateGeneralTopic } from '@/lib/general-topic-server';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,25 +14,68 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const personId = searchParams.get('person_id');
+    const topicId = searchParams.get('topic_id');
 
-    if (!personId) {
-      return NextResponse.json({ error: 'person_id is required' }, { status: 400 });
-    }
+    // Handle topic-based messages
+    if (topicId) {
+      // Verify user owns this topic
+      const { data: topic } = await supabase
+        .from('topics')
+        .select('id, title')
+        .eq('id', topicId)
+        .eq('created_by', user.id)
+        .single();
 
-    // Handle special case for 'general' assistant
-    if (personId === 'general') {
-      // Get messages directly for general conversation
-      const { data, error } = await supabase
+      if (!topic) {
+        return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+      }
+
+      const { data: messages, error } = await supabase
         .from('messages')
         .select('*')
-        .eq('person_id', 'general')
-        .eq('user_id', user.id)
+        .eq('topic_id', topicId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      const messages = data || [];
       
-      return NextResponse.json({ messages });
+      return NextResponse.json({ messages: messages || [] });
+    }
+
+    // Handle special case for 'general' assistant - redirect to General topic
+    if (personId === 'general') {
+      try {
+        const generalTopic = await getOrCreateGeneralTopic(user.id, supabase);
+        
+        // Get messages from the General topic
+        const { data: messages, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('topic_id', generalTopic.id)
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        
+        return NextResponse.json({ 
+          messages: messages || [],
+          redirectToTopic: generalTopic.id // Signal to client to redirect
+        });
+      } catch (error) {
+        console.error('Error handling general topic:', error);
+        // Fallback to legacy behavior for now
+        const { data, error: legacyError } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('person_id', 'general')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true });
+
+        if (legacyError) throw legacyError;
+        return NextResponse.json({ messages: data || [] });
+      }
+    }
+
+    if (!personId) {
+      return NextResponse.json({ error: 'person_id or topic_id is required' }, { status: 400 });
     }
 
     const messages = await getMessages(personId, supabase);
@@ -52,10 +96,80 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { person_id, content, is_user } = body;
+    const { person_id, topic_id, content, is_user } = body;
 
-    if (!person_id || !content || typeof is_user !== 'boolean') {
-      return NextResponse.json({ error: 'person_id, content, and is_user are required' }, { status: 400 });
+    if (!content || typeof is_user !== 'boolean') {
+      return NextResponse.json({ error: 'content and is_user are required' }, { status: 400 });
+    }
+
+    // Handle topic-based messages
+    if (topic_id) {
+      // Verify user owns this topic
+      const { data: topic } = await supabase
+        .from('topics')
+        .select('id')
+        .eq('id', topic_id)
+        .eq('created_by', user.id)
+        .single();
+
+      if (!topic) {
+        return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+      }
+
+      const { data: message, error } = await supabase
+        .from('messages')
+        .insert({
+          content: content.trim(),
+          topic_id,
+          person_id: null,
+          is_user
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return NextResponse.json({ message }, { status: 201 });
+    }
+
+    // Handle special case for 'general' assistant - redirect to General topic
+    if (person_id === 'general') {
+      try {
+        const generalTopic = await getOrCreateGeneralTopic(user.id, supabase);
+        
+        const { data: message, error } = await supabase
+          .from('messages')
+          .insert({
+            content: content.trim(),
+            topic_id: generalTopic.id,
+            person_id: null,
+            is_user
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        return NextResponse.json({ 
+          message,
+          redirectToTopic: generalTopic.id // Signal to client to redirect
+        }, { status: 201 });
+      } catch (error) {
+        console.error('Error handling general topic message:', error);
+        // Fallback to legacy behavior
+        const message = await createMessage({
+          person_id,
+          content,
+          is_user,
+          user_id: user.id
+        }, supabase);
+
+        return NextResponse.json({ message }, { status: 201 });
+      }
+    }
+
+    if (!person_id) {
+      return NextResponse.json({ error: 'person_id or topic_id is required' }, { status: 400 });
     }
 
     const message = await createMessage({
