@@ -30,7 +30,6 @@ export async function getOrCreateGeneralTopicClient(userId: string): Promise<Gen
     .from('topics')
     .insert({
       title: 'General',
-      description: 'Management coaching and strategic thinking space',
       participants: [],
       created_by: userId,
       status: 'active'

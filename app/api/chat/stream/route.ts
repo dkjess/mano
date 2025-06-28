@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getMessages, createMessage } from '@/lib/database';
 import { getChatCompletionStreaming } from '@/lib/claude';
 import { formatContextForPrompt, type ManagementContextData, type TeamContext, type PersonContext } from '@/lib/management-context';
+import { BUCKET_NAME } from '@/lib/storage';
 import type { Person } from '@/types/database';
 
 // Import the vector-enabled context system
@@ -97,8 +98,9 @@ class VectorService {
   ): Promise<{
     similarConversations: VectorSearchResult[];
     crossPersonInsights: VectorSearchResult[];
+    fileContent?: VectorSearchResult[];
   }> {
-    const [similarConversations, allConversations] = await Promise.all([
+    const [similarConversations, allConversations, fileContent] = await Promise.all([
       // Find similar conversations with current person/topic
       this.searchSimilarConversations(userId, currentQuery, {
         personFilter: (!isTopicConversation && currentPersonId !== 'general') ? currentPersonId : undefined,
@@ -109,6 +111,14 @@ class VectorService {
       // Find similar conversations with other people/topics (cross-context insights)
       this.searchSimilarConversations(userId, currentQuery, {
         limit: 8
+      }),
+
+      // Search through uploaded file content
+      this.searchFileContent(userId, currentQuery, {
+        personFilter: (!isTopicConversation && currentPersonId !== 'general') ? currentPersonId : undefined,
+        topicFilter: isTopicConversation ? topicId : undefined,
+        limit: 3,
+        threshold: 0.75 // Slightly higher threshold for file content
       })
     ]);
 
@@ -118,7 +128,8 @@ class VectorService {
 
     return {
       similarConversations,
-      crossPersonInsights
+      crossPersonInsights,
+      fileContent: fileContent.length > 0 ? fileContent : undefined
     };
   }
 
@@ -144,7 +155,8 @@ class VectorService {
           content: content,
           embedding: embedding,
           message_type: messageType,
-          metadata: metadata
+          metadata: metadata,
+          content_type: 'message'
         });
 
       if (error) {
@@ -154,6 +166,149 @@ class VectorService {
       console.error('Error storing message embedding:', error);
       // Don't throw - embedding storage is supplementary
     }
+  }
+
+  /**
+   * Store embeddings for file content
+   */
+  async storeFileContentEmbedding(
+    userId: string,
+    fileId: string,
+    messageId: string,
+    content: string,
+    metadata: any = {}
+  ): Promise<void> {
+    try {
+      // For large files, chunk the content
+      const chunks = this.chunkContent(content);
+      
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const embedding = await this.generateEmbedding(chunk);
+
+        // Get the message details to determine person_id or topic_id
+        const { data: messageRecord } = await this.supabase
+          .from('messages')
+          .select('person_id, topic_id')
+          .eq('id', messageId)
+          .single();
+
+        const { error } = await this.supabase
+          .from('conversation_embeddings')
+          .insert({
+            user_id: userId,
+            person_id: messageRecord?.person_id || null,
+            topic_id: messageRecord?.topic_id || null,
+            message_id: messageId,
+            file_id: fileId,
+            content: chunk,
+            embedding: embedding,
+            message_type: 'user', // File uploads are always from user
+            metadata: {
+              ...metadata,
+              original_filename: metadata.filename,
+              chunk_number: i,
+              total_chunks: chunks.length
+            },
+            content_type: chunks.length > 1 ? 'file_chunk' : 'file_content',
+            chunk_index: i
+          });
+
+        if (error) {
+          console.error(`Error storing file embedding chunk ${i}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Error storing file content embedding:', error);
+      // Don't throw - embedding storage is supplementary
+    }
+  }
+
+  /**
+   * Search through file content embeddings
+   */
+  async searchFileContent(
+    userId: string,
+    query: string,
+    options: {
+      threshold?: number;
+      limit?: number;
+      fileId?: string;
+      personFilter?: string;
+      topicFilter?: string;
+    } = {}
+  ): Promise<VectorSearchResult[]> {
+    try {
+      const queryEmbedding = await this.generateEmbedding(query);
+
+      const { data, error } = await this.supabase
+        .rpc('match_file_content_embeddings', {
+          query_embedding: queryEmbedding,
+          match_user_id: userId,
+          match_threshold: options.threshold || 0.78,
+          match_count: options.limit || 10,
+          file_filter: options.fileId || null,
+          person_filter: options.personFilter || null,
+          topic_filter: options.topicFilter || null
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error searching file content:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Split content into manageable chunks for embedding
+   */
+  private chunkContent(content: string, maxChunkSize: number = 8000): string[] {
+    if (content.length <= maxChunkSize) {
+      return [content];
+    }
+
+    const chunks: string[] = [];
+    const sentences = content.split(/[.!?]\s+/);
+    let currentChunk = '';
+
+    for (const sentence of sentences) {
+      const testChunk = currentChunk + (currentChunk ? '. ' : '') + sentence;
+      
+      if (testChunk.length <= maxChunkSize) {
+        currentChunk = testChunk;
+      } else {
+        if (currentChunk) {
+          chunks.push(currentChunk);
+          currentChunk = sentence;
+        } else {
+          // Single sentence is too long, split by words
+          const words = sentence.split(' ');
+          let wordChunk = '';
+          
+          for (const word of words) {
+            const testWordChunk = wordChunk + (wordChunk ? ' ' : '') + word;
+            if (testWordChunk.length <= maxChunkSize) {
+              wordChunk = testWordChunk;
+            } else {
+              if (wordChunk) chunks.push(wordChunk);
+              wordChunk = word;
+            }
+          }
+          
+          if (wordChunk) currentChunk = wordChunk;
+        }
+      }
+    }
+
+    if (currentChunk) {
+      chunks.push(currentChunk);
+    }
+
+    return chunks.length > 0 ? chunks : [content.substring(0, maxChunkSize)];
   }
 }
 
@@ -240,6 +395,7 @@ class ManagementContextBuilder {
       return {
         similar_conversations: context.similarConversations,
         cross_person_insights: context.crossPersonInsights,
+        file_content_insights: context.fileContent,
         related_themes: []
       };
     } catch (error) {
@@ -282,6 +438,16 @@ function buildSemanticContext(people: any[], semanticContext: any, currentQuery:
     });
   }
 
+  // Add relevant file content insights
+  if (semanticContext?.file_content_insights?.length > 0) {
+    semanticContext.file_content_insights.slice(0, 2).forEach((fileInsight: any) => {
+      const fileName = fileInsight.metadata?.original_filename || 'Unknown file';
+      const similarity = Math.round(fileInsight.similarity * 100);
+      
+      insights.push(`From uploaded file "${fileName}": "${fileInsight.content.substring(0, 100)}..." (${similarity}% relevant)`);
+    });
+  }
+
   return insights;
 }
 
@@ -295,7 +461,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { person_id, message: userMessage, topicId } = body;
+    console.log('🔍 DEBUG: Request body received:', {
+      person_id: body.person_id,
+      message: body.message?.substring(0, 100) + (body.message?.length > 100 ? '...' : ''),
+      topicId: body.topicId,
+      hasFiles: body.hasFiles,
+      isTopicConversation: body.isTopicConversation,
+      topicTitle: body.topicTitle
+    });
+    
+    const { person_id, message: userMessage, topicId, hasFiles } = body;
     let { isTopicConversation, topicTitle } = body;
 
     if (!person_id || !userMessage) {
@@ -410,30 +585,134 @@ export async function POST(request: NextRequest) {
       managementContext = undefined;
     }
 
-    // Save user message first (to topic or person)
+    // Find the existing user message (created by frontend) instead of creating a new one
     let userMessageRecord;
     if (isTopicConversation && actualTopicId) {
-      // For topic conversations, save to topic messages
+      // For topic conversations, find the most recent user message
       const { data: message, error } = await supabase
         .from('messages')
-        .insert({
-          content: userMessage,
-          topic_id: actualTopicId,
-          person_id: null,
-          is_user: true
-        })
-        .select()
+        .select('*')
+        .eq('topic_id', actualTopicId)
+        .eq('is_user', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .single();
       
-      if (error) throw error;
-      userMessageRecord = message;
+      if (error) {
+        console.warn('Could not find existing user message for topic, creating new one:', error);
+        // Fallback: create new message if not found
+        const { data: newMessage, error: createError } = await supabase
+          .from('messages')
+          .insert({
+            content: userMessage,
+            topic_id: actualTopicId,
+            person_id: null,
+            is_user: true
+          })
+          .select()
+          .single();
+        
+        if (createError) throw createError;
+        userMessageRecord = newMessage;
+      } else {
+        userMessageRecord = message;
+      }
     } else {
-      userMessageRecord = await createMessage({
-        person_id,
-        content: userMessage,
-        is_user: true,
-        user_id: user.id
-      }, supabase);
+      // For person conversations, find the most recent user message
+      const { data: message, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('person_id', person_id)
+        .eq('is_user', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (error) {
+        console.warn('Could not find existing user message for person, creating new one:', error);
+        // Fallback: create new message if not found
+        userMessageRecord = await createMessage({
+          person_id,
+          content: userMessage,
+          is_user: true,
+          user_id: user.id
+        }, supabase);
+      } else {
+        userMessageRecord = message;
+      }
+    }
+
+    // If the user uploaded files, fetch them to include in context
+    let fileContext = '';
+    console.log('🔍 DEBUG: Checking for files...', { hasFiles, userMessageId: userMessageRecord?.id });
+    
+    if (hasFiles && userMessageRecord) {
+      try {
+        console.log('🔍 DEBUG: Fetching message files from database...');
+        const { data: messageFiles } = await supabase
+          .from('message_files')
+          .select('original_name, file_type, content_type, extracted_content, processing_status')
+          .eq('message_id', userMessageRecord.id);
+        
+        console.log('🔍 DEBUG: Message files query result:', { messageFiles, count: messageFiles?.length });
+        
+        if (messageFiles && messageFiles.length > 0) {
+          fileContext = `\n\n[Attached files:]\n`;
+          console.log('🔍 DEBUG: Processing', messageFiles.length, 'files...');
+          
+          // Use extracted content from database (much simpler and faster)
+          for (const file of messageFiles) {
+            console.log('🔍 DEBUG: Processing file:', {
+              name: file.original_name,
+              type: file.file_type,
+              contentType: file.content_type,
+              hasExtractedContent: !!file.extracted_content,
+              processingStatus: file.processing_status
+            });
+            
+            fileContext += `\n--- File: ${file.original_name} ---\n`;
+            
+            // Use extracted content from database
+            if (file.extracted_content) {
+              console.log('🔍 DEBUG: Using extracted content from database:', { 
+                contentLength: file.extracted_content.length,
+                preview: file.extracted_content.substring(0, 100) + (file.extracted_content.length > 100 ? '...' : '')
+              });
+              
+              // Limit content to avoid token limits
+              const content = file.extracted_content.length > 5000 
+                ? file.extracted_content.substring(0, 5000) + '\n...[truncated]'
+                : file.extracted_content;
+              fileContext += `Content:\n${content}\n`;
+            } else if (file.processing_status === 'processing') {
+              console.log('🔍 DEBUG: File is still being processed');
+              fileContext += `[File is being processed...]\n`;
+            } else if (file.processing_status === 'failed') {
+              console.log('🔍 DEBUG: File processing failed');
+              fileContext += `[File processing failed]\n`;
+            } else if (file.processing_status === 'pending') {
+              console.log('🔍 DEBUG: File processing is pending');
+              fileContext += `[File processing is pending...]\n`;
+            } else {
+              console.log('🔍 DEBUG: No text content available for file type');
+              fileContext += `[No text content available for this file type]\n`;
+            }
+            
+            fileContext += `--- End of ${file.original_name} ---\n`;
+          }
+        } else {
+          console.log('🔍 DEBUG: No files found for message ID:', userMessageRecord.id);
+        }
+      } catch (error) {
+        console.error('🔍 DEBUG: Error fetching message files:', error);
+      }
+    } else {
+      console.log('🔍 DEBUG: Skipping file processing - hasFiles:', hasFiles, 'userMessageRecord:', !!userMessageRecord);
+    }
+    
+    console.log('🔍 DEBUG: Final fileContext length:', fileContext.length);
+    if (fileContext.length > 0) {
+      console.log('🔍 DEBUG: FileContext preview:', fileContext.substring(0, 200) + (fileContext.length > 200 ? '...' : ''));
     }
 
     try {
@@ -442,8 +721,20 @@ export async function POST(request: NextRequest) {
       const contextualName = isTopicConversation ? `Topic Discussion: ${topicTitle}` : person.name;
       const contextualRole = isTopicConversation ? 'Management Coach for Topic Discussion' : person.role;
       
+      const finalMessage = userMessage + fileContext;
+      console.log('🔍 DEBUG: Sending to Claude:', {
+        originalMessage: userMessage,
+        fileContextLength: fileContext.length,
+        finalMessageLength: finalMessage.length,
+        hasFileContent: fileContext.length > 0
+      });
+      
+      if (fileContext.length > 0) {
+        console.log('🔍 DEBUG: Message with file context preview:', finalMessage.substring(0, 500) + (finalMessage.length > 500 ? '...' : ''));
+      }
+      
       const stream = await getChatCompletionStreaming(
-        userMessage,
+        finalMessage,
         contextualName,
         contextualRole,
         person.relationship_type,

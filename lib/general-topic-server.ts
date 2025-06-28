@@ -19,41 +19,73 @@ export async function getOrCreateGeneralTopic(
 ): Promise<GeneralTopic> {
   const client = supabase || await createClient();
   
-  // First, try to find existing General topic
-  const { data: existingTopic, error: findError } = await client
+  // First, try to find existing General topic(s)
+  const { data: existingTopics, error: findError } = await client
     .from('topics')
     .select('*')
     .eq('created_by', userId)
     .eq('title', 'General')
-    .single();
+    .order('created_at', { ascending: true })
+    .limit(1);
 
-  if (existingTopic && !findError) {
-    return existingTopic;
+  if (!findError && existingTopics && existingTopics.length > 0) {
+    return existingTopics[0];
   }
 
-  // If no existing topic found, create a new one
-  const { data: newTopic, error: createError } = await client
-    .from('topics')
-    .insert({
-      title: 'General',
-      description: 'Management coaching and strategic thinking space',
-      participants: [],
-      created_by: userId,
-      status: 'active'
-    })
-    .select()
-    .single();
+  // If no existing topic found, try to create a new one
+  // Use a transaction to prevent race conditions
+  try {
+    const { data: newTopic, error: createError } = await client
+      .from('topics')
+      .insert({
+        title: 'General',
+        description: 'Management coaching and strategic thinking space',
+        participants: [],
+        created_by: userId,
+        status: 'active'
+      })
+      .select()
+      .single();
 
-  if (createError) {
-    console.error('Error creating General topic:', createError);
-    throw new Error(`Failed to create General topic: ${createError.message}`);
+    if (createError) {
+      // If creation failed due to race condition, try to find the existing one again
+      const { data: raceTopics } = await client
+        .from('topics')
+        .select('*')
+        .eq('created_by', userId)
+        .eq('title', 'General')
+        .order('created_at', { ascending: true })
+        .limit(1);
+      
+      if (raceTopics && raceTopics.length > 0) {
+        return raceTopics[0];
+      }
+      
+      console.error('Error creating General topic:', createError);
+      throw new Error(`Failed to create General topic: ${createError.message}`);
+    }
+
+    if (!newTopic) {
+      throw new Error('Failed to create General topic: No data returned');
+    }
+
+    return newTopic;
+  } catch (error) {
+    // Final fallback - try to find any existing General topic
+    const { data: fallbackTopics } = await client
+      .from('topics')
+      .select('*')
+      .eq('created_by', userId)
+      .eq('title', 'General')
+      .order('created_at', { ascending: true })
+      .limit(1);
+    
+    if (fallbackTopics && fallbackTopics.length > 0) {
+      return fallbackTopics[0];
+    }
+    
+    throw error;
   }
-
-  if (!newTopic) {
-    throw new Error('Failed to create General topic: No data returned');
-  }
-
-  return newTopic;
 }
 
 /**

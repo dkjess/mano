@@ -3,11 +3,12 @@ import { NextRequest } from 'next/server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { topicId: string } }
+  { params }: { params: Promise<{ topicId: string }> }
 ) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    const { topicId } = await params;
     
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -17,7 +18,7 @@ export async function GET(
     const { data: topic } = await supabase
       .from('topics')
       .select('id')
-      .eq('id', params.topicId)
+      .eq('id', topicId)
       .eq('created_by', user.id)
       .single();
 
@@ -28,7 +29,7 @@ export async function GET(
     const { data: messages, error } = await supabase
       .from('messages')
       .select('*')
-      .eq('topic_id', params.topicId)
+      .eq('topic_id', topicId)
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -42,11 +43,12 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { topicId: string } }
+  { params }: { params: Promise<{ topicId: string }> }
 ) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    const { topicId } = await params;
     
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -62,7 +64,7 @@ export async function POST(
     const { data: topic } = await supabase
       .from('topics')
       .select('id')
-      .eq('id', params.topicId)
+      .eq('id', topicId)
       .eq('created_by', user.id)
       .single();
 
@@ -74,7 +76,7 @@ export async function POST(
       .from('messages')
       .insert({
         content: content.trim(),
-        topic_id: params.topicId,
+        topic_id: topicId,
         person_id: null,
         is_user
       })

@@ -206,15 +206,25 @@ export function useMessages(personId: string | null): UseMessagesResult {
   }, [personId]);
 
   const refresh = useCallback(async () => {
-    // Force a fresh fetch by clearing cache first
-    if (personId) {
+    if (!personId) return;
+    
+    try {
+      // Force a fresh fetch by clearing cache first
       const cacheKey = `messages_${personId}`;
       messagesCache.delete(cacheKey);
+      
+      // Fetch fresh messages
+      setIsLoading(true);
+      const freshMessages = await fetchMessages(true); // Force fresh fetch
+      setMessages(freshMessages);
+      setError(null);
+    } catch (error) {
+      console.error('Error refreshing messages:', error);
+      setError(error instanceof Error ? error.message : 'Failed to refresh messages');
+    } finally {
+      setIsLoading(false);
     }
-    
-    // Trigger a re-fetch by updating a dummy state or re-running the effect
-    // For now, we'll just clear cache - the next natural operation will reload
-  }, [personId]);
+  }, [personId, fetchMessages]);
 
   return {
     messages,

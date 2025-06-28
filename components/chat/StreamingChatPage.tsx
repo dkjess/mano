@@ -6,6 +6,7 @@ import { streamChatResponse } from '@/lib/api/streaming';
 import { ChatLayout } from '@/components/chat/ChatLayout';
 import { EnhancedChatInput } from '@/components/chat/EnhancedChatInput';
 import { MessageBubble } from '@/components/chat/MessageBubble';
+import { useEffect, useRef } from 'react';
 
 interface StreamingChatPageProps {
   personId: string;
@@ -30,6 +31,8 @@ export function StreamingChatPage({
     clearStreamingMessage
   } = useStreamingResponse();
 
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
   const handleSendMessage = async (content: string) => {
     // Add user message immediately
     addUserMessage(content);
@@ -53,6 +56,18 @@ export function StreamingChatPage({
       // Handle error - maybe show error message or retry option
     }
   };
+
+  // Scroll to bottom after messages render
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const container = document.querySelector('.chat-container');
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }, 150);
+    
+    return () => clearTimeout(timer);
+  }, [personId, messages.length, streamingMessage?.content]);
 
   // Combine regular messages with streaming message
   const allMessages: Message[] = [...messages];
@@ -80,6 +95,7 @@ export function StreamingChatPage({
           onSend={handleSendMessage}
           disabled={isProcessing}
           placeholder={`Message ${personName || 'Mano'}...`}
+          contextName={personName}
         />
       }
     >
@@ -92,23 +108,26 @@ export function StreamingChatPage({
           </p>
         </div>
       ) : (
-        allMessages.map(message => (
-          <MessageBubble
-            key={message.id}
-            content={message.content}
-            isUser={message.isUser}
-            isLoading={message.isLoading}
-            isStreaming={message.isStreaming}
-            timestamp={message.timestamp}
-            avatar={message.isUser ? undefined : '✋'}
-            onComplete={() => {
-              if (streamingMessage?.id === message.id) {
-                completeStreamingMessage(message.id, message.content);
-                clearStreamingMessage();
-              }
-            }}
-          />
-        ))
+        <>
+          {allMessages.map(message => (
+            <MessageBubble
+              key={message.id}
+              content={message.content}
+              isUser={message.isUser}
+              isLoading={message.isLoading}
+              isStreaming={message.isStreaming}
+              timestamp={message.timestamp}
+              avatar={message.isUser ? undefined : '✋'}
+              onComplete={() => {
+                if (streamingMessage?.id === message.id) {
+                  completeStreamingMessage(message.id, message.content);
+                  clearStreamingMessage();
+                }
+              }}
+            />
+          ))}
+          <div ref={messagesEndRef} />
+        </>
       )}
     </ChatLayout>
   );

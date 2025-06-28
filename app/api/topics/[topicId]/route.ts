@@ -3,11 +3,12 @@ import { NextRequest } from 'next/server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { topicId: string } }
+  { params }: { params: Promise<{ topicId: string }> }
 ) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    const { topicId } = await params;
     
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -16,7 +17,7 @@ export async function GET(
     const { data: topic, error } = await supabase
       .from('topics')
       .select('*')
-      .eq('id', params.topicId)
+      .eq('id', topicId)
       .eq('created_by', user.id)
       .single();
 
@@ -34,11 +35,12 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { topicId: string } }
+  { params }: { params: Promise<{ topicId: string }> }
 ) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    const { topicId } = await params;
     
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -49,7 +51,7 @@ export async function PUT(
     const { data: topic, error } = await supabase
       .from('topics')
       .update(updates)
-      .eq('id', params.topicId)
+      .eq('id', topicId)
       .eq('created_by', user.id)
       .select()
       .single();

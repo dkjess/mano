@@ -12,7 +12,7 @@ export function ResponsiveLayout({ children }: ResponsiveLayoutProps) {
   
   // Determine if we should show the sidebar based on the current route
   const shouldShowSidebar = () => {
-    // Don't show sidebar on auth pages, landing pages, or special routes
+    // Don't show sidebar on auth pages, landing pages, or conversations page
     if (pathname.startsWith('/auth/') || 
         pathname.startsWith('/protected/') ||
         pathname === '/sign-up' ||
@@ -21,7 +21,7 @@ export function ResponsiveLayout({ children }: ResponsiveLayoutProps) {
       return false
     }
     
-    // Show sidebar on app pages (people, topics, etc.)
+    // Show sidebar on all other app pages on desktop
     return true
   }
 
@@ -50,18 +50,18 @@ export function ResponsiveLayout({ children }: ResponsiveLayoutProps) {
 
   return (
     <>
-      {/* Desktop Layout: Sidebar + Content */}
-      <div className="hidden lg:flex conversation-app min-h-screen">
+      {/* Desktop Layout: Always show sidebar on lg+ screens */}
+      <div className="hidden lg:flex min-h-screen bg-gray-50">
         <Sidebar 
           currentPersonId={context.currentPersonId}
           currentTopicId={context.currentTopicId}
         />
-        <main className="main-content flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden bg-white">
           {children}
         </main>
       </div>
 
-      {/* Mobile Layout: Full-width content, no sidebar */}
+      {/* Mobile Layout: Never show sidebar, full-width content */}
       <div className="lg:hidden min-h-screen">
         {children}
       </div>
