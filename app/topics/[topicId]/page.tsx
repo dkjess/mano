@@ -12,6 +12,7 @@ import { MessageBubble } from '@/components/chat/MessageBubble';
 import { useFileDropZone } from '@/lib/hooks/useFileDropZone';
 import { ChatDropZone } from '@/components/chat/ChatDropZone';
 import { useStreamingResponse } from '@/lib/hooks/useStreamingResponse';
+import { ConversationHeader } from '@/components/ConversationHeader';
 import type { Message } from '@/types/database';
 
 export default function TopicPage() {
@@ -52,34 +53,99 @@ export default function TopicPage() {
     openFileDialog
   } = useFileDropZone();
 
-  // Auto-scroll to bottom when messages change
+  // Scroll to bottom after messages render
   useEffect(() => {
-    const scrollTimer = setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
-    return () => clearTimeout(scrollTimer);
-  }, [messages, streamingMessage]);
+    // Use setTimeout to ensure DOM is updated
+    const timer = setTimeout(() => {
+      const container = document.querySelector('.conversation-messages');
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }, 150);
+    
+    return () => clearTimeout(timer);
+  }, [topicId, messages.length, streamingMessage?.content]);
 
   // Handle streaming completion
   useEffect(() => {
-    const handleStreamingComplete = async () => {
-      if (streamingMessage?.isComplete && !streamingMessage.isStreaming) {
-        // The streaming API now handles saving messages, so we just need to refresh
-        await refreshMessages();
-        clearStreamingMessage();
-      }
-    };
-
-    handleStreamingComplete();
-  }, [streamingMessage, clearStreamingMessage, refreshMessages]);
+    if (streamingMessage?.isComplete && !streamingMessage.isStreaming) {
+      // The streaming API now handles saving messages, so we just need to refresh
+      refreshMessages();
+      clearStreamingMessage();
+    }
+  }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, clearStreamingMessage, refreshMessages]);
 
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading || streamingMessage?.isStreaming) return;
     
     try {
+      // Step 1: Create user message first
+      console.log('Creating user message...');
+      const userMessageResponse = await fetch(`/api/topics/${topicId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          content: content.trim(),
+          is_user: true 
+        })
+      });
+
+      if (!userMessageResponse.ok) {
+        const errorData = await userMessageResponse.text();
+        console.error('User message creation failed:', errorData);
+        throw new Error('Failed to create user message');
+      }
+
+      const { message: userMessage } = await userMessageResponse.json();
+      console.log('User message created:', userMessage.id);
+
+      // Step 2: Upload files if any
+      if (files.length > 0) {
+        console.log(`Uploading ${files.length} files...`);
+        const uploadPromises = files.map(async (droppedFile) => {
+          try {
+            const formData = new FormData();
+            formData.append('file', droppedFile.file);
+            formData.append('messageId', userMessage.id);
+
+            const uploadResponse = await fetch('/api/files/upload', {
+              method: 'POST',
+              body: formData
+            });
+
+            if (!uploadResponse.ok) {
+              const errorData = await uploadResponse.text();
+              console.error(`Failed to upload file ${droppedFile.file.name}:`, errorData);
+              return false;
+            }
+            
+            console.log(`File uploaded successfully: ${droppedFile.file.name}`);
+            return true;
+          } catch (error) {
+            console.error(`Error uploading file ${droppedFile.file.name}:`, error);
+            return false;
+          }
+        });
+
+        // Wait for all uploads to complete
+        await Promise.all(uploadPromises);
+      }
+
+      // Clear files from UI
       clearFiles();
 
-      // Start AI streaming response (this will handle saving both user and AI messages)
+      // Step 3: Refresh messages to show the new user message with attachments
+      console.log('Refreshing messages...');
+      try {
+        await refreshMessages();
+        console.log('Messages refreshed successfully');
+      } catch (refreshError) {
+        console.error('Error refreshing messages:', refreshError);
+        // Continue anyway, the streaming response will still work
+      }
+
+      // Step 4: Start AI streaming response
+      console.log('Starting AI streaming response...');
       const assistantMessageId = `assistant-${Date.now()}`;
       await startStreaming(assistantMessageId, async () => {
         const response = await fetch('/api/chat/stream', {
@@ -90,11 +156,14 @@ export default function TopicPage() {
             person_id: 'general', // Use general for topic conversations
             isTopicConversation: true,
             topicTitle: topic?.title,
-            topicId: topicId
+            topicId: topicId,
+            hasFiles: files.length > 0 // Indicate that files were uploaded
           })
         });
 
         if (!response.ok) {
+          const errorData = await response.text();
+          console.error('AI streaming response failed:', errorData);
           throw new Error('Failed to get AI response');
         }
 
@@ -102,6 +171,13 @@ export default function TopicPage() {
       });
     } catch (error) {
       console.error('Failed to send message:', error);
+      // Ensure we refresh messages even if there was an error
+      // so the user can see their message
+      try {
+        await refreshMessages();
+      } catch (refreshError) {
+        console.error('Error refreshing messages after error:', refreshError);
+      }
     }
   };
 
@@ -157,15 +233,10 @@ export default function TopicPage() {
           disabled={isLoading}
         >
           <div className="conversation-container">
-            <header className="conversation-header">
-              <div className="conversation-header-content">
-                <h1 className="conversation-title">💬 {topic.title}</h1>
-                <p className="conversation-subtitle">
-                  {getParticipantNames()}
-                </p>
-              </div>
-              
-            </header>
+            <ConversationHeader
+              title={`💬 ${topic.title}`}
+              subtitle={getParticipantNames()}
+            />
 
             <div className="conversation-messages">
               {messages.length === 0 && !isLoading ? (
@@ -181,6 +252,7 @@ export default function TopicPage() {
                   {messages.map((message, index) => (
                     <MessageBubble
                       key={message.id || index}
+                      messageId={message.id}
                       content={message.content}
                       isUser={message.is_user ?? (message.role === 'user')}
                       timestamp={new Date(message.created_at)}
@@ -236,15 +308,10 @@ export default function TopicPage() {
           disabled={isLoading}
         >
           <div className="conversation-container">
-            <header className="conversation-header">
-              <div className="conversation-header-content">
-                <h1 className="conversation-title">💬 {topic.title}</h1>
-                <p className="conversation-subtitle">
-                  {getParticipantNames()}
-                </p>
-              </div>
-              
-            </header>
+            <ConversationHeader
+              title={`💬 ${topic.title}`}
+              subtitle={getParticipantNames()}
+            />
 
             <div className="conversation-messages">
               {messages.length === 0 && !isLoading ? (
@@ -260,6 +327,7 @@ export default function TopicPage() {
                   {messages.map((message, index) => (
                     <MessageBubble
                       key={message.id || index}
+                      messageId={message.id}
                       content={message.content}
                       isUser={message.is_user ?? (message.role === 'user')}
                       timestamp={new Date(message.created_at)}

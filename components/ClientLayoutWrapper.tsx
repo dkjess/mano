@@ -1,6 +1,7 @@
 'use client'
 
 import { PeopleProvider } from '@/lib/contexts/people-context'
+import { TopicsProvider } from '@/lib/contexts/topics-context'
 import { ResponsiveLayout } from '@/components/ResponsiveLayout'
 
 interface ClientLayoutWrapperProps {
@@ -10,9 +11,11 @@ interface ClientLayoutWrapperProps {
 export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   return (
     <PeopleProvider>
-      <ResponsiveLayout>
-        {children}
-      </ResponsiveLayout>
+      <TopicsProvider>
+        <ResponsiveLayout>
+          {children}
+        </ResponsiveLayout>
+      </TopicsProvider>
     </PeopleProvider>
   )
 }

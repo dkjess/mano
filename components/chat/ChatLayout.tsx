@@ -9,7 +9,12 @@ interface ChatLayoutProps {
   className?: string;
 }
 
-export function ChatLayout({ children, header, input, className = '' }: ChatLayoutProps) {
+export function ChatLayout({ 
+  children, 
+  header, 
+  input, 
+  className = ''
+}: ChatLayoutProps) {
   return (
     <div className={`chat-layout ${className}`}>
       {header && (
@@ -18,15 +23,13 @@ export function ChatLayout({ children, header, input, className = '' }: ChatLayo
         </div>
       )}
       
-      <div className="chat-messages-container">
+      <div className="chat-container">
         <div className="chat-messages">
           {children}
         </div>
       </div>
       
-      <div className="chat-input-area">
-        {input}
-      </div>
+      {input}
     </div>
   );
 } 

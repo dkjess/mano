@@ -22,6 +22,7 @@ import { ChatDropZone } from '@/components/chat/ChatDropZone';
 import { MessageFile } from '@/types/database';
 import { useTopics } from '@/lib/hooks/useTopics';
 import { MobileLayout } from '@/components/MobileLayout';
+import { ConversationHeader } from '@/components/ConversationHeader';
 
 
 
@@ -37,7 +38,7 @@ export default function PersonDetailPage() {
   
   // Use context and hooks instead of local state
   const { people, getPerson, updatePerson, addPerson, deletePerson } = usePeople();
-  const { messages, isLoading: messagesLoading, addMessage } = useMessages(personId);
+  const { messages, isLoading: messagesLoading, addMessage, refresh: refreshMessages } = useMessages(personId);
   const { topics } = useTopics();
 
   // Add streaming support
@@ -134,96 +135,170 @@ export default function PersonDetailPage() {
     scrollToBottom();
   }, [sending, streamingMessage]);
 
+  // Handle streaming completion
+  useEffect(() => {
+    if (streamingMessage?.isComplete && !streamingMessage.isStreaming) {
+      // The streaming API now handles saving messages, so we just need to refresh
+      refreshMessages();
+      clearStreamingMessage();
+    }
+  }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, clearStreamingMessage, refreshMessages]);
+
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = document.querySelector('.conversation-messages');
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   };
+
+  // Scroll to bottom when conversation loads or messages change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollToBottom();
+    }, 150);
+    
+    return () => clearTimeout(timer);
+  }, [personId, messages.length]);
 
   // Enhanced send message function with real API streaming
   const handleSendMessage = async (content: string, dropzoneFiles?: DroppedFile[]) => {
     // Don't send if already processing
     if (sending || streamingMessage?.isStreaming) return;
 
+    // Check if we have either content or files
+    const trimmedContent = content.trim();
+    const hasFiles = files.length > 0;
+    
+    if (!trimmedContent && !hasFiles) {
+      console.log('No content or files to send');
+      return;
+    }
+
     setSending(true);
     setRetryData(null);
 
     try {
-      // Combine message with file contents from both old and new systems
-      let combinedMessage = content;
+      // Step 1: Create user message first
+      // For file-only messages, use a default message
+      const messageContent = trimmedContent || '[File attachment]';
       
-      // Handle legacy staged files
-      if (stagedFiles.length > 0) {
-        const fileContents = stagedFiles.map(staged => 
-          `📎 **${staged.file.name}** (${(staged.file.size / 1024).toFixed(1)}KB)\n\n${staged.content}`
-        ).join('\n\n---\n\n');
-        
-        combinedMessage = content 
-          ? `${content}\n\n${fileContents}`
-          : fileContents;
-      }
-
-      // Convert dropzone files to clean MessageFile format (don't add to message content)
-      const messageFiles = dropzoneFiles ? convertDroppedFilesToMessageFiles(dropzoneFiles) : [];
-
-      // For AI context, we still need file contents, but we'll process them separately
-      let aiContextFiles = '';
-      if (dropzoneFiles && dropzoneFiles.length > 0) {
-        const dropzoneContents = await Promise.all(
-          dropzoneFiles.map(async (droppedFile) => {
-            const content = droppedFile.type === 'image' 
-              ? `📷 **${droppedFile.file.name}** (Image, ${(droppedFile.file.size / 1024).toFixed(1)}KB)`
-              : await processFile(droppedFile.file);
-            return `${getFileIcon(droppedFile.file.name)} **${droppedFile.file.name}** (${(droppedFile.file.size / 1024).toFixed(1)}KB)\n\n${content}`;
-          })
-        );
-        aiContextFiles = '\n\n' + dropzoneContents.join('\n\n---\n\n');
-      }
-
-      // Create clean user message with separate text and files
-      const userMessage: Message & { files?: MessageFile[] } = {
-        id: `user-${Date.now()}`,
+      console.log('Creating user message...', { personId, content: messageContent, hasFiles });
+      const requestBody = { 
         person_id: personId,
-        content: content, // Only the user's actual message text
-        is_user: true,
-        role: 'user', // Legacy field for compatibility
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        files: messageFiles // Clean file attachments
+        content: messageContent,
+        is_user: true 
       };
-      addMessage(userMessage as Message);
-
-      // Clear both file systems after sending
-      setStagedFiles([]);
-      clearFiles();
-
-      // Call the real streaming API with combined message for AI context
-      const response = await fetch('/api/chat/stream', {
+      console.log('Request body:', requestBody);
+      
+      const userMessageResponse = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          person_id: personId,
-          message: combinedMessage + aiContextFiles // Include file context for AI
-        })
+        body: JSON.stringify(requestBody)
       });
+
+      if (!userMessageResponse.ok) {
+        const errorData = await userMessageResponse.text();
+        console.error('User message creation failed:', errorData);
+        throw new Error('Failed to create user message');
+      }
+
+      const { message: userMessage } = await userMessageResponse.json();
+      console.log('🔍 DEBUG: User message created:', {
+        id: userMessage.id,
+        content: userMessage.content,
+        person_id: userMessage.person_id
+      });
+
+      // Step 2: Upload files if any
+      if (files.length > 0) {
+        console.log(`Uploading ${files.length} files...`);
+        const uploadPromises = files.map(async (droppedFile) => {
+          try {
+            const formData = new FormData();
+            formData.append('file', droppedFile.file);
+            formData.append('messageId', userMessage.id);
+
+            const uploadResponse = await fetch('/api/files/upload', {
+              method: 'POST',
+              body: formData
+            });
+
+            if (!uploadResponse.ok) {
+              const errorData = await uploadResponse.text();
+              console.error(`Failed to upload file ${droppedFile.file.name}:`, errorData);
+              return false;
+            }
+            
+            console.log(`File uploaded successfully: ${droppedFile.file.name}`);
+            return true;
+          } catch (error) {
+            console.error(`Error uploading file ${droppedFile.file.name}:`, error);
+            return false;
+          }
+        });
+
+        // Wait for all uploads to complete
+        const uploadResults = await Promise.all(uploadPromises);
+        console.log('🔍 DEBUG: Upload results:', uploadResults);
+        console.log('🔍 DEBUG: Files uploaded for message ID:', userMessage.id);
+      }
+
+      // Clear files from UI
+      clearFiles();
+      setStagedFiles([]);
+
+      // Step 3: Refresh messages to show the new user message with attachments
+      console.log('Refreshing messages...');
+      try {
+        await refreshMessages();
+        console.log('Messages refreshed successfully');
+      } catch (refreshError) {
+        console.error('Error refreshing messages:', refreshError);
+        // Continue anyway, the streaming response will still work
+      }
+
+      // Step 4: Start AI streaming response
+      console.log('🔍 DEBUG: Starting AI streaming response...', {
+        personId,
+        messageContent: trimmedContent || 'Please analyze the attached file(s)',
+        hasFiles,
+        filesCount: files.length
+      });
+      
+      const assistantMessageId = `assistant-${Date.now()}`;
+      await startStreaming(assistantMessageId, async () => {
+        const requestPayload = {
+          person_id: personId,
+          message: trimmedContent || 'Please analyze the attached file(s)',
+          hasFiles: hasFiles // Indicate that files were uploaded
+        };
+        
+        console.log('🔍 DEBUG: Sending streaming request:', requestPayload);
+        
+        const response = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestPayload)
+        });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API Error ${response.status}: ${errorText}`);
+        const errorData = await response.text();
+        console.error('AI streaming response failed:', errorData);
+        throw new Error('Failed to get AI response');
       }
 
-      if (!response.body) {
-        throw new Error('No response body');
-      }
-
-      // Start streaming with the real API response
-      const streamingId = `streaming-${Date.now()}`;
-      
-      await startStreaming(streamingId, async () => {
-        return response.body!;
-      });
+      return response.body!;
+    });
 
     } catch (error) {
-      console.error('Error sending message:', error);
-      setRetryData({ message: content, shouldShow: true });
+      console.error('Failed to send message:', error);
+      // Ensure we refresh messages even if there was an error
+      // so the user can see their message
+      try {
+        await refreshMessages();
+      } catch (refreshError) {
+        console.error('Error refreshing messages after error:', refreshError);
+      }
     } finally {
       setSending(false);
     }
@@ -482,27 +557,24 @@ export default function PersonDetailPage() {
               onEditProfile={handleEditProfile}
             />
           ) : (
-            <header className="conversation-header">
-              <div 
-                className="conversation-header-content"
-                onClick={personId !== 'general' ? handleOpenPersonEditMenu : undefined}
-                style={{ 
-                  cursor: personId !== 'general' ? 'pointer' : 'default'
-                }}
-                title={personId !== 'general' ? 'Click to edit profile' : undefined}
-              >
-                <h1 className="conversation-title">
-                  {personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')} {person.name}
-                </h1>
-                <p className="conversation-subtitle">
-                  {personId === 'general' 
-                    ? 'Management coaching and strategic advice' 
-                    : person.role || getRelationshipLabel(person.relationship_type || 'peer')
-                  }
-                </p>
-              </div>
-              
-            </header>
+            <ConversationHeader
+              title={`${personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')} ${person.name}`}
+              subtitle={personId === 'general' 
+                ? 'Management coaching and strategic advice' 
+                : person.role || getRelationshipLabel(person.relationship_type || 'peer')
+              }
+              rightAction={personId !== 'general' ? (
+                <button
+                  onClick={handleOpenPersonEditMenu}
+                  className="text-gray-400 hover:text-gray-600 p-2"
+                  title="Edit profile"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                  </svg>
+                </button>
+              ) : null}
+            />
           )}
 
           <div className="conversation-messages">
@@ -531,6 +603,7 @@ export default function PersonDetailPage() {
                 {messages.map((message, index) => (
                   <MessageBubble
                     key={message.id || index}
+                    messageId={message.id}
                     content={message.content}
                     isUser={message.is_user ?? (message.role === 'user')}
                     files={(message as any).files || []} // Pass files if they exist
@@ -559,20 +632,6 @@ export default function PersonDetailPage() {
                     isStreaming={streamingMessage.isStreaming}
                     timestamp={new Date()}
                     avatar={personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
-                    onComplete={() => {
-                      // When streaming completes, add the final message to permanent state
-                      const finalMessage: Message = {
-                        id: `assistant-${Date.now()}`,
-                        person_id: personId,
-                        content: streamingMessage.content,
-                        is_user: false,
-                        role: 'assistant', // Legacy field for compatibility
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                      };
-                      addMessage(finalMessage);
-                      clearStreamingMessage();
-                    }}
                   />
                 )}
 
@@ -709,27 +768,24 @@ export default function PersonDetailPage() {
               onEditProfile={handleEditProfile}
             />
           ) : (
-            <header className="conversation-header">
-              <div 
-                className="conversation-header-content"
-                onClick={personId !== 'general' ? handleOpenPersonEditMenu : undefined}
-                style={{ 
-                  cursor: personId !== 'general' ? 'pointer' : 'default'
-                }}
-                title={personId !== 'general' ? 'Click to edit profile' : undefined}
-              >
-                <h1 className="conversation-title">
-                  {personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')} {person.name}
-                </h1>
-                <p className="conversation-subtitle">
-                  {personId === 'general' 
-                    ? 'Management coaching and strategic advice' 
-                    : person.role || getRelationshipLabel(person.relationship_type || 'peer')
-                  }
-                </p>
-              </div>
-              
-            </header>
+            <ConversationHeader
+              title={`${personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')} ${person.name}`}
+              subtitle={personId === 'general' 
+                ? 'Management coaching and strategic advice' 
+                : person.role || getRelationshipLabel(person.relationship_type || 'peer')
+              }
+              rightAction={personId !== 'general' ? (
+                <button
+                  onClick={handleOpenPersonEditMenu}
+                  className="text-gray-400 hover:text-gray-600 p-2"
+                  title="Edit profile"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                  </svg>
+                </button>
+              ) : null}
+            />
           )}
 
           <div className="conversation-messages">
@@ -758,6 +814,7 @@ export default function PersonDetailPage() {
                 {messages.map((message, index) => (
                   <MessageBubble
                     key={message.id || index}
+                    messageId={message.id}
                     content={message.content}
                     isUser={message.is_user ?? (message.role === 'user')}
                     files={(message as any).files || []} // Pass files if they exist
@@ -786,20 +843,6 @@ export default function PersonDetailPage() {
                     isStreaming={streamingMessage.isStreaming}
                     timestamp={new Date()}
                     avatar={personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
-                    onComplete={() => {
-                      // When streaming completes, add the final message to permanent state
-                      const finalMessage: Message = {
-                        id: `assistant-${Date.now()}`,
-                        person_id: personId,
-                        content: streamingMessage.content,
-                        is_user: false,
-                        role: 'assistant', // Legacy field for compatibility
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                      };
-                      addMessage(finalMessage);
-                      clearStreamingMessage();
-                    }}
                   />
                 )}
 
