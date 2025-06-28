@@ -1,6 +1,8 @@
-# Git Branch Strategy and Deployment Workflow
+# Git Branch Strategy & Deployment Workflow
 
-## 🌿 **Branch Structure**
+This document outlines our Git workflow and deployment strategy for Mano.
+
+## Branch Structure
 
 ```
 main (production)
@@ -10,192 +12,157 @@ staging (pre-production)
 feature/branch-name (development)
 ```
 
-### **Branch Purposes**
+### Branches
 
-**🎯 `main`** - Production branch
-- **Deploys to**: Production (mano.app)
-- **Database**: Production Supabase (`zfroutbzdkhivnpiezho`)
-- **Trigger**: Automatic deploy on push
-- **Protection**: Requires PR from staging + approval
+1. **`main`** - Production branch
+   - Protected branch with required reviews
+   - Automatically deploys to production on push
+   - Only accepts PRs from `staging`
 
-**🧪 `staging`** - Pre-production testing
-- **Deploys to**: Staging (staging-mano.vercel.app)  
-- **Database**: Staging Supabase (`yfkbevovqyjwanrubddq`)
-- **Trigger**: Automatic deploy on push
-- **Protection**: Requires PR + checks
+2. **`staging`** - Pre-production testing
+   - Protected branch
+   - Automatically deploys to staging environment
+   - Accepts PRs from feature branches
 
-**🔧 `feature/*`** - Development branches
-- **Deploys to**: None (local testing only)
-- **Database**: Local Supabase
-- **Merges to**: `staging` via PR
+3. **`feature/*`** - Development branches
+   - Created from `staging`
+   - Where all development happens
+   - Merged to `staging` via PR
 
-## 🚀 **Complete Workflow**
+## Development Workflow
 
-### **1. Feature Development**
+### 1. Starting New Work
 ```bash
-# Start from staging
 git checkout staging
 git pull origin staging
-
-# Create feature branch
-git checkout -b feature/awesome-new-feature
-
-# Develop with local testing
-./scripts/reset-with-test-data.sh
-pnpm dev
-
-# Test thoroughly
-node test-complete-system.js
-npm run lint
-npm run build
+git checkout -b feature/your-feature-name
 ```
 
-### **2. Submit for Review**
+### 2. During Development
+- Commit frequently with clear messages
+- Run tests locally before pushing
+- Keep branch up to date with staging
+
 ```bash
-# Push feature branch
-git push origin feature/awesome-new-feature
-
-# Create PR: feature/awesome-new-feature → staging
-# - Automated checks run
-# - Code review required
-# - All checks must pass
+git fetch origin
+git rebase origin/staging
 ```
 
-### **3. Staging Deployment** 
+### 3. Creating a Pull Request
+1. Push your feature branch
+2. Create PR targeting `staging` branch
+3. Ensure all checks pass
+4. Request review
+
+### 4. After Staging Review
+Once tested in staging:
+1. Create PR from `staging` to `main`
+2. Require approval from team lead
+3. Merge to deploy to production
+
+## Deployment Pipeline
+
+### Staging Deployment
+- **Trigger**: Push to `staging` branch
+- **Environment**: staging-mano.vercel.app
+- **Database**: Staging Supabase project
+- **Process**:
+  1. Run tests and linting
+  2. Check migration safety
+  3. Apply database migrations
+  4. Deploy to Vercel staging
+  5. Run health checks
+
+### Production Deployment
+- **Trigger**: Push to `main` or manual workflow
+- **Environment**: mano.app
+- **Database**: Production Supabase project
+- **Process**:
+  1. Validate deployment confirmation
+  2. Run comprehensive tests
+  3. Verify staging is healthy
+  4. Apply migrations with caution
+  5. Deploy to Vercel production
+  6. Extended health checks
+  7. Post-deployment monitoring
+
+## Pull Request Checks
+
+All PRs run automated checks:
+- **Code Quality**: ESLint, TypeScript, console.log detection
+- **Security**: npm audit, hardcoded secrets scan
+- **Migration Safety**: Dangerous operation detection
+- **Build Test**: Ensure project builds successfully
+
+## Database Migrations
+
+### Creating Safe Migrations
 ```bash
-# After PR approval and merge to staging:
-# - Auto-deploys to staging environment
-# - Applies migrations to staging database
-# - Runs health checks
-# - Available at staging-mano.vercel.app
+npm run migration:create -- descriptive_name
 ```
 
-### **4. Production Release**
+### Migration Guidelines
+1. Always backward compatible
+2. Include rollback documentation
+3. Test in staging first
+4. No destructive operations without approval
+
+### Rollback Procedure
 ```bash
-# Create PR: staging → main
-# - Additional production checks
-# - Requires team approval
-# - Deploys to production automatically
+# In case of issues
+npm run migration:rollback
 ```
 
-## 🛡️ **Safety Mechanisms**
+## Emergency Procedures
 
-### **Automated Checks (All PRs)**
-- ✅ **ESLint + TypeScript**: Code quality
-- ✅ **Security scanning**: No hardcoded secrets
-- ✅ **Migration safety**: No dangerous operations
-- ✅ **Build verification**: Ensure app compiles
-- ✅ **Console.log detection**: Clean production code
+### Hotfix Process
+1. Create hotfix branch from `main`
+2. Apply minimal fix
+3. Test locally
+4. PR directly to `main` (requires 2 approvals)
+5. Cherry-pick back to `staging`
 
-### **Branch Protection Rules**
-
-**Staging Branch:**
-- ✅ Require PR before merging
-- ✅ Require status checks to pass
-- ✅ Dismiss stale reviews on new commits
-- ✅ Require conversation resolution
-
-**Main Branch:**
-- ✅ All staging requirements +
-- ✅ Require 1+ approvals
-- ✅ Restrict pushes to staging branch only
-- ✅ Include administrators in restrictions
-
-## 🔧 **Environment Connections**
-
-### **Vercel Project Setup**
+### Rollback Production
 ```bash
-# Connect staging branch to staging deployment
-vercel --scope=your-team
-vercel link
-# Configure staging deployment with staging env vars
+# Revert Vercel deployment
+vercel rollback
 
-# Main branch automatically connects to production
+# If database rollback needed
+npm run migration:emergency-rollback
 ```
 
-### **Supabase Project Connections**
-- **Staging branch** → Staging Supabase (`yfkbevovqyjwanrubddq`)
-- **Main branch** → Production Supabase (`zfroutbzdkhivnpiezho`)
-- **Local development** → Local Docker Supabase
+## Environment Configuration
 
-### **Environment Variables by Branch**
+### Required GitHub Secrets
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+- `SUPABASE_ACCESS_TOKEN`
+- `STAGING_SUPABASE_URL`
+- `STAGING_SUPABASE_ANON_KEY`
+- `PRODUCTION_SUPABASE_URL`
+- `PRODUCTION_SUPABASE_ANON_KEY`
+- `ANTHROPIC_API_KEY`
+- `OPENAI_API_KEY`
+- `STAGING_URL`
 
-**Staging:**
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://yfkbevovqyjwanrubddq.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=staging-anon-key
-NODE_ENV=staging
-```
+### Local Setup
+1. Copy `.env.staging.example` to `.env.staging`
+2. Copy `.env.production.example` to `.env.production`
+3. Fill in the values
+4. Never commit `.env` files
 
-**Production:**
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://zfroutbzdkhivnpiezho.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=production-anon-key
-NODE_ENV=production
-```
+## Best Practices
 
-## 📋 **Developer Commands**
+1. **Never force push** to protected branches
+2. **Always test migrations** in staging first
+3. **Monitor deployments** for at least 30 minutes
+4. **Keep PRs focused** - one feature per PR
+5. **Write clear commit messages** following conventional commits
 
-### **Daily Development**
-```bash
-# Fresh start with test data
-./scripts/reset-with-test-data.sh
+## Monitoring
 
-# Create safe migration
-./scripts/safe-migration.sh add_feature "Description"
-
-# Run full test suite
-npm test  # (lint + typecheck + build)
-```
-
-### **Branch Management**
-```bash
-# Switch to staging for new feature
-git checkout staging && git pull
-
-# Create and push feature branch
-git checkout -b feature/my-feature
-git push -u origin feature/my-feature
-
-# Keep feature branch updated
-git checkout staging && git pull
-git checkout feature/my-feature
-git rebase staging
-```
-
-### **Environment Testing**
-```bash
-# Test staging deployment
-curl https://staging-mano.vercel.app/api/health
-
-# Test production deployment  
-curl https://mano.app/api/health
-```
-
-## ⚡ **Quick Reference**
-
-### **Branch Commands**
-```bash
-# Start new feature
-git checkout staging && git pull
-git checkout -b feature/my-feature
-
-# Submit for review
-git push -u origin feature/my-feature
-# Create PR: feature/my-feature → staging
-
-# Deploy to production
-# Create PR: staging → main
-```
-
-### **Environment URLs**
-- **Local**: `http://localhost:3000`
-- **Staging**: `https://staging-mano.vercel.app`
-- **Production**: `https://mano.app`
-
-### **Database Projects**
-- **Local**: Docker container
-- **Staging**: `yfkbevovqyjwanrubddq`
-- **Production**: `zfroutbzdkhivnpiezho`
-
-This workflow ensures **zero production incidents** while maintaining **rapid development velocity**! 🎯
+- Staging: Check health at `/api/health`
+- Production: Monitor at production URL `/api/health`
+- Set up alerts for deployment failures
+- Review logs after each deployment

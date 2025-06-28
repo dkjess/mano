@@ -109,3 +109,38 @@ jobs:
         vercel-args: '--env NEXT_PUBLIC_SUPABASE_URL=${{ secrets.STAGING_SUPABASE_URL }} --env NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.STAGING_SUPABASE_ANON_KEY }} --env ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }} --env OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} --env NODE_ENV=staging'
         alias-domains: |
           staging-mano.vercel.app
+    
+    - name: Run staging health check
+      run: |
+        echo "🔍 Waiting for deployment..."
+        sleep 30
+        
+        # Health check
+        STAGING_URL="${{ steps.deploy.outputs.preview-url }}"
+        if curl -f "$STAGING_URL/api/health"; then
+          echo "✅ Staging deployment healthy"
+        else
+          echo "❌ Staging deployment failed health check"
+          exit 1
+        fi
+    
+    - name: Comment PR with staging link
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `🚀 **Staging Deployment Ready**
+            
+            **Staging URL**: ${{ steps.deploy.outputs.preview-url }}
+            **Database**: \`${{ env.STAGING_PROJECT_REF }}\`
+            
+            ✅ All tests passed
+            ✅ Migrations applied
+            ✅ Health check passed
+            
+            Ready for review and testing!`
+          })

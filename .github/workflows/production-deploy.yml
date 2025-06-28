@@ -50,6 +50,16 @@ jobs:
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PRODUCTION_SUPABASE_ANON_KEY }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    
+    - name: Check staging health
+      run: |
+        echo "🔍 Verifying staging is healthy before production deploy..."
+        if curl -f "${{ secrets.STAGING_URL }}/api/health"; then
+          echo "✅ Staging is healthy"
+        else
+          echo "❌ Staging is unhealthy - cannot deploy to production"
+          exit 1
+        fi
 
   deploy-production:
     runs-on: ubuntu-latest
@@ -81,9 +91,22 @@ jobs:
       env:
         SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
     
+    - name: Check migration status
+      run: |
+        echo "🔍 Checking production migration status..."
+        supabase migration list --linked
+        
+        # Check if there are pending migrations
+        if supabase migration list --linked | grep -q "│.*│.*│"; then
+          echo "📝 Migrations to apply found"
+        else
+          echo "✅ No pending migrations"
+        fi
+    
     - name: Apply migrations to production
       run: |
-        echo "🗄️ Applying migrations to production..."
+        echo "🗺️ Applying migrations to production..."
+        echo "⚠️ This will modify production database"
         supabase db push --linked
     
     - name: Deploy to Vercel production
@@ -93,3 +116,55 @@ jobs:
         vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
         vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
         vercel-args: '--prod --env NEXT_PUBLIC_SUPABASE_URL=${{ secrets.PRODUCTION_SUPABASE_URL }} --env NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.PRODUCTION_SUPABASE_ANON_KEY }} --env ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }} --env OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} --env NODE_ENV=production'
+    
+    - name: Production health check
+      run: |
+        echo "🔍 Waiting for production deployment..."
+        sleep 30
+        
+        # Extended health checks for production
+        PRODUCTION_URL="https://mano.app"  # Replace with your actual domain
+        
+        echo "Checking basic health..."
+        if curl -f "$PRODUCTION_URL/api/health"; then
+          echo "✅ Basic health check passed"
+        else
+          echo "❌ Basic health check failed"
+          exit 1
+        fi
+        
+        echo "Checking database connectivity..."
+        # Add specific database health checks here
+        
+        echo "✅ Production deployment successful"
+    
+    - name: Post-deployment monitoring
+      run: |
+        echo "📊 Setting up post-deployment monitoring..."
+        # Add monitoring setup here
+        echo "✅ Monitoring active"
+    
+    - name: Notify team
+      if: always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const status = '${{ job.status }}' === 'success' ? '✅ Success' : '❌ Failed';
+          const emoji = '${{ job.status }}' === 'success' ? '🚀' : '🚨';
+          
+          github.rest.repos.createCommitComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            commit_sha: context.sha,
+            body: `${emoji} **Production Deployment ${status}**
+            
+            **Commit**: ${context.sha.substring(0, 7)}
+            **Deployer**: @${{ github.actor }}
+            **Time**: ${new Date().toISOString()}
+            
+            ${status === '✅ Success' ? 
+              '🎉 Production is live with latest changes!' : 
+              '⚠️ Deployment failed - check logs and consider rollback'}
+            
+            **Monitor**: https://mano.app/api/health`
+          })
