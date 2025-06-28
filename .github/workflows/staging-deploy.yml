@@ -1,0 +1,111 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [ staging ]
+  pull_request:
+    branches: [ staging ]
+
+env:
+  STAGING_PROJECT_REF: yfkbevovqyjwanrubddq
+  PRODUCTION_PROJECT_REF: zfroutbzdkhivnpiezho
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Run Tests
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run linting
+      run: npm run lint
+    
+    - name: Run type checking
+      run: npx tsc --noEmit
+    
+    - name: Run build test
+      run: npm run build
+      env:
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+  migration-check:
+    runs-on: ubuntu-latest
+    name: Check Migrations
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Supabase CLI
+      uses: supabase/setup-cli@v1
+      with:
+        version: latest
+    
+    - name: Check migration status
+      run: |
+        echo "Checking migration consistency..."
+        
+        # Check for dangerous operations
+        if grep -r "DROP TABLE\|DROP COLUMN\|DROP INDEX" supabase/migrations/; then
+          echo "❌ Dangerous operations found in migrations!"
+          exit 1
+        fi
+        
+        echo "✅ Migration safety checks passed"
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    name: Deploy to Staging
+    needs: [test, migration-check]
+    if: github.ref == 'refs/heads/staging'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Supabase CLI
+      uses: supabase/setup-cli@v1
+      with:
+        version: latest
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Link to staging project
+      run: |
+        echo "${{ secrets.SUPABASE_ACCESS_TOKEN }}" | supabase auth login --token
+        supabase link --project-ref ${{ env.STAGING_PROJECT_REF }}
+      env:
+        SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    
+    - name: Apply migrations to staging
+      run: |
+        echo "🗄️ Applying migrations to staging..."
+        supabase db push --linked
+    
+    - name: Deploy to Vercel staging
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        vercel-args: '--env NEXT_PUBLIC_SUPABASE_URL=${{ secrets.STAGING_SUPABASE_URL }} --env NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.STAGING_SUPABASE_ANON_KEY }} --env ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }} --env OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} --env NODE_ENV=staging'
+        alias-domains: |
+          staging-mano.vercel.app

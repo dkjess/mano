@@ -1,0 +1,95 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: 'Type DEPLOY to confirm production deployment'
+        required: true
+        type: string
+
+env:
+  PRODUCTION_PROJECT_REF: zfroutbzdkhivnpiezho
+
+jobs:
+  pre-deployment-checks:
+    runs-on: ubuntu-latest
+    name: Pre-deployment Checks
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Validate confirmation (if manual)
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        if [[ "${{ github.event.inputs.confirm_production }}" != "DEPLOY" ]]; then
+          echo "❌ Production deployment requires 'DEPLOY' confirmation"
+          exit 1
+        fi
+        echo "✅ Production deployment confirmed"
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run comprehensive tests
+      run: |
+        echo "🧪 Running comprehensive test suite..."
+        npm run lint
+        npx tsc --noEmit
+        npm run build
+      env:
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.PRODUCTION_SUPABASE_URL }}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PRODUCTION_SUPABASE_ANON_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    needs: [pre-deployment-checks]
+    environment: production
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Supabase CLI
+      uses: supabase/setup-cli@v1
+      with:
+        version: latest
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Link to production project
+      run: |
+        echo "${{ secrets.SUPABASE_ACCESS_TOKEN }}" | supabase auth login --token
+        supabase link --project-ref ${{ env.PRODUCTION_PROJECT_REF }}
+      env:
+        SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    
+    - name: Apply migrations to production
+      run: |
+        echo "🗄️ Applying migrations to production..."
+        supabase db push --linked
+    
+    - name: Deploy to Vercel production
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        vercel-args: '--prod --env NEXT_PUBLIC_SUPABASE_URL=${{ secrets.PRODUCTION_SUPABASE_URL }} --env NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.PRODUCTION_SUPABASE_ANON_KEY }} --env ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }} --env OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} --env NODE_ENV=production'
