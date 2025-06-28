@@ -61,7 +61,42 @@ export async function getMessages(personId: string, supabase: SupabaseClient): P
     .order('created_at', { ascending: true });
 
   if (error) throw error;
-  return data || [];
+  
+  // Fetch files for each message
+  const messagesWithFiles = await Promise.all((data || []).map(async (message) => {
+    const { data: files } = await supabase
+      .from('message_files')
+      .select('original_name, file_type, file_size, storage_path, content_type')
+      .eq('message_id', message.id);
+    
+    // Add file info to message content if files exist
+    if (files && files.length > 0) {
+      let fileInfo = '\n\n[Attached files:]';
+      
+      for (const file of files) {
+        fileInfo += `\n- ${file.original_name}`;
+        
+        // For historical context, just include file names and types
+        // Don't download content to keep message history lightweight
+        if (file.file_type === 'transcript' || file.content_type.startsWith('text/')) {
+          fileInfo += ' (text file)';
+        } else if (file.file_type === 'image') {
+          fileInfo += ' (image)';
+        } else if (file.file_type === 'document') {
+          fileInfo += ' (document)';
+        }
+      }
+      
+      return {
+        ...message,
+        content: message.content + fileInfo
+      };
+    }
+    
+    return message;
+  }));
+  
+  return messagesWithFiles;
 }
 
 export async function createMessage(
