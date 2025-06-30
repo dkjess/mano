@@ -1,12 +1,20 @@
+<<<<<<< HEAD
 name: Pull Request Checks
 
 on:
   pull_request:
     branches: [ staging, main ]
+=======
+name: PR Checks
+
+on:
+  pull_request:
+>>>>>>> main
     types: [opened, synchronize, reopened]
 
 jobs:
   code-quality:
+<<<<<<< HEAD
     runs-on: ubuntu-latest
     name: Code Quality Checks
     
@@ -274,3 +282,88 @@ jobs:
               body: body
             });
           }
+=======
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Run linter
+        run: pnpm run lint
+        
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+        
+  build-test:
+    name: Build Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Build application
+        run: pnpm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+          
+  supabase-checks:
+    name: Supabase Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+          
+      - name: Validate migrations
+        run: |
+          # Check that migrations are properly formatted
+          for file in supabase/migrations/*.sql; do
+            if [ -f "$file" ]; then
+              echo "Validating $file"
+              # Basic SQL syntax check
+              supabase db lint "$file" || true
+            fi
+          done
+          
+      - name: Check for migration conflicts
+        run: |
+          # List all migration files and check for timestamp conflicts
+          ls -la supabase/migrations/*.sql | awk '{print $9}' | sort | uniq -d | grep . && echo "Duplicate migration timestamps found!" && exit 1 || echo "No migration conflicts"
+>>>>>>> main

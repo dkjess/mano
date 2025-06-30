@@ -1,21 +1,42 @@
-# example netlify.toml
+# Netlify deployment configuration
 [build]
   command = "pnpm run build"
   functions = "netlify/functions"
   publish = ".next"
 
-  ## Uncomment to use this redirect for Single Page Applications like create-react-app.
-  ## Not needed for static site generators.
-  #[[redirects]]
-  #  from = "/*"
-  #  to = "/index.html"
-  #  status = 200
+# Production configuration (main branch)
+[context.production]
+  environment = { NODE_ENV = "production" }
+  command = "pnpm run build"
 
-  ## (optional) Settings for Netlify Dev
-  ## https://github.com/netlify/cli/blob/main/docs/netlify-dev.md#project-detection
-  #[dev]
-  #  command = "yarn start" # Command to start your dev server
-  #  port = 3000 # Port that the dev server will be listening on
-  #  publish = "dist" # Folder with the static content for _redirect file
+# Staging configuration (staging branch)
+[context.staging]
+  environment = { NODE_ENV = "staging" }
+  command = "pnpm run build"
 
-  ## more info on configuring this file: https://ntl.fyi/file-based-build-config
+# Branch deploy configuration (for feature branches)
+[context.branch-deploy]
+  environment = { NODE_ENV = "development" }
+  command = "pnpm run build"
+
+# Deploy preview configuration (for PRs)
+[context.deploy-preview]
+  environment = { NODE_ENV = "development" }
+  command = "pnpm run build"
+
+# Headers for security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Next.js specific settings
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[functions]
+  node_bundler = "esbuild"
+  included_files = ["netlify/functions/**"]
