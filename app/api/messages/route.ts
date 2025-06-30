@@ -122,7 +122,8 @@ export async function POST(request: NextRequest) {
           content: content.trim(),
           topic_id,
           person_id: null,
-          is_user
+          is_user,
+          user_id: user.id
         })
         .select()
         .single();
@@ -143,7 +144,8 @@ export async function POST(request: NextRequest) {
             content: content.trim(),
             topic_id: generalTopic.id,
             person_id: null,
-            is_user
+            is_user,
+            user_id: user.id
           })
           .select()
           .single();

@@ -78,7 +78,8 @@ export async function POST(
         content: content.trim(),
         topic_id: topicId,
         person_id: null,
-        is_user
+        is_user,
+        user_id: user.id
       })
       .select()
       .single();

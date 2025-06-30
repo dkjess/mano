@@ -607,7 +607,8 @@ export async function POST(request: NextRequest) {
             content: userMessage,
             topic_id: actualTopicId,
             person_id: null,
-            is_user: true
+            is_user: true,
+            user_id: user.id
           })
           .select()
           .single();
@@ -778,7 +779,8 @@ export async function POST(request: NextRequest) {
                   content: fullResponse,
                   topic_id: actualTopicId,
                   person_id: null,
-                  is_user: false
+                  is_user: false,
+                  user_id: user.id
                 })
                 .select()
                 .single();
@@ -854,7 +856,8 @@ export async function POST(request: NextRequest) {
                   content: errorMessage,
                   topic_id: actualTopicId,
                   person_id: null,
-                  is_user: false
+                  is_user: false,
+                  user_id: user.id
                 })
                 .select()
                 .single();
