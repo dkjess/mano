@@ -12,9 +12,10 @@ export function ResponsiveLayout({ children }: ResponsiveLayoutProps) {
   
   // Determine if we should show the sidebar based on the current route
   const shouldShowSidebar = () => {
-    // Don't show sidebar on auth pages, landing pages, or conversations page
+    // Don't show sidebar on auth pages, landing pages, onboarding, or conversations page
     if (pathname.startsWith('/auth/') || 
         pathname.startsWith('/protected/') ||
+        pathname.startsWith('/onboarding') ||
         pathname === '/sign-up' ||
         pathname === '/' ||
         pathname === '/conversations') {

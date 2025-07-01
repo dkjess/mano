@@ -460,6 +460,13 @@ export async function POST(request: NextRequest) {
       return new Response('Unauthorized', { status: 401 });
     }
 
+    // Fetch user profile for personalized responses
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('call_name, job_role, company')
+      .eq('user_id', user.id)
+      .single();
+
     const body = await request.json();
     console.log('🔍 DEBUG: Request body received:', {
       person_id: body.person_id,
@@ -484,7 +491,7 @@ export async function POST(request: NextRequest) {
     if (person_id === 'general') {
       // Get or create the General topic
       try {
-        const { getOrCreateGeneralTopic } = await import('@/lib/general-topic');
+        const { getOrCreateGeneralTopic } = await import('@/lib/general-topic-server');
         const generalTopic = await getOrCreateGeneralTopic(user.id, supabase);
         actualTopicId = generalTopic.id;
         isTopicConversation = true;
@@ -718,8 +725,8 @@ export async function POST(request: NextRequest) {
 
     try {
       // Get Claude's streaming response with management context
-      // For topic conversations, enhance the context
-      const contextualName = isTopicConversation ? `Topic Discussion: ${topicTitle}` : person.name;
+      // For topic conversations, use the topic title directly (especially important for "General")
+      const contextualName = isTopicConversation ? topicTitle : person.name;
       const contextualRole = isTopicConversation ? 'Management Coach for Topic Discussion' : person.role;
       
       const finalMessage = userMessage + fileContext;
@@ -740,7 +747,8 @@ export async function POST(request: NextRequest) {
         contextualRole,
         person.relationship_type,
         conversationHistory,
-        managementContext
+        managementContext,
+        userProfile
       );
 
       // Create a ReadableStream to handle the streaming response

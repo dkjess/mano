@@ -40,21 +40,12 @@ export function SignUpForm({
       });
       if (error) throw error;
       
-      // For email signups, we need to create the General topic and redirect
+      // For email signups, redirect to onboarding
       if (data.user) {
-        try {
-          // Import the client-side helper
-          const { getOrCreateGeneralTopicClient } = await import("@/lib/general-topic");
-          const generalTopic = await getOrCreateGeneralTopicClient(data.user.id);
-          router.push(`/topics/${generalTopic.id}`);
-        } catch (topicError) {
-          console.error('Error creating General topic:', topicError);
-          // Fallback to people page if topic creation fails
-          router.push("/people");
-        }
+        router.push("/onboarding");
       } else {
         // Fallback if user data is not available
-        router.push("/people");
+        router.push("/onboarding");
       }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");

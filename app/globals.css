@@ -2488,3 +2488,9 @@ html, body {
     font-size: 11px;
   }
 }
+
+/* Onboarding input placeholder override */
+.onboarding-input::placeholder {
+  color: rgba(107, 114, 128, 0.1) !important;
+  font-style: normal !important;
+}

@@ -30,8 +30,11 @@ Previous conversation history:
 
 Respond in a helpful, professional tone. Focus on actionable advice and insights that will help the manager build better relationships with their team. When relevant team context adds value, reference it naturally in your response. Use hand emojis occasionally to reinforce the "helping hand" theme, but don't overdo it.`;
 
-export const GENERAL_SYSTEM_PROMPT = `You are Mano, an intelligent one-on-one management assistant for strategic thinking and management challenges. Help with:
+export const GENERAL_SYSTEM_PROMPT = `You are Mano, an intelligent one-on-one management assistant for strategic thinking and management challenges.
 
+{user_context}
+
+Help with:
 • Strategic planning and decision-making frameworks
 • Team leadership and development strategies  
 • Communication and stakeholder management
@@ -55,7 +58,7 @@ Management Context: {management_context}
 
 Previous Conversation: {conversation_history}
 
-Respond in a warm, professional tone as a trusted management coach. Keep responses focused, practical, and actionable.`;
+Respond in a warm, professional tone as a trusted management coach. Keep responses focused, practical, and actionable. Address the user by their preferred name when appropriate.`;
 
 async function callClaudeWithRetry(
  systemPrompt: string,
@@ -104,13 +107,37 @@ async function callClaudeWithRetry(
  throw new Error('UNKNOWN_ERROR');
 }
 
+interface UserProfile {
+ call_name?: string | null;
+ job_role?: string | null;
+ company?: string | null;
+}
+
+function formatUserContext(profile?: UserProfile): string {
+ if (!profile) return '';
+ 
+ const parts = [];
+ if (profile.call_name) {
+   parts.push(`You are speaking with ${profile.call_name}`);
+ }
+ if (profile.job_role) {
+   parts.push(`they work as a ${profile.job_role}`);
+ }
+ if (profile.company) {
+   parts.push(`at ${profile.company}`);
+ }
+ 
+ return parts.length > 0 ? parts.join(', ') + '.' : '';
+}
+
 export async function getChatCompletion(
  userMessage: string,
  personName: string,
  personRole: string | null,
  relationshipType: string,
  conversationHistory: Message[],
- managementContext?: ManagementContextData
+ managementContext?: ManagementContextData,
+ userProfile?: UserProfile
 ): Promise<string> {
  // Format conversation history
  const historyText = conversationHistory
@@ -125,7 +152,9 @@ export async function getChatCompletion(
  
  // Use different system prompt for general assistant
  if (personName === 'General') {
+   const userContextText = formatUserContext(userProfile);
    systemPrompt = GENERAL_SYSTEM_PROMPT
+     .replace('{user_context}', userContextText || 'No user profile information available.')
      .replace('{management_context}', contextText || 'No additional team context available.')
      .replace('{conversation_history}', historyText || 'No previous conversation');
  } else {
@@ -147,7 +176,8 @@ export async function getChatCompletionStreaming(
  personRole: string | null,
  relationshipType: string,
  conversationHistory: Message[],
- managementContext?: ManagementContextData
+ managementContext?: ManagementContextData,
+ userProfile?: UserProfile
 ) {
  const historyText = conversationHistory
    .slice(-10)
@@ -161,7 +191,9 @@ export async function getChatCompletionStreaming(
  
  // Use different system prompt for general assistant
  if (personName === 'General') {
+   const userContextText = formatUserContext(userProfile);
    systemPrompt = GENERAL_SYSTEM_PROMPT
+     .replace('{user_context}', userContextText || 'No user profile information available.')
      .replace('{management_context}', contextText || 'No additional team context available.')
      .replace('{conversation_history}', historyText || 'No previous conversation');
  } else {
