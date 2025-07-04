@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getPeople, createPerson } from '@/lib/database';
-import { generatePersonWelcomeMessage } from '@/lib/welcome-message-generation';
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,8 +35,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Name and relationship_type are required' }, { status: 400 });
     }
 
-    console.log('User ID from auth:', user.id);
-    console.log('Creating person with data:', { user_id: user.id, name, role, relationship_type });
+    console.log('🟢 User ID from auth:', user.id);
+    console.log('🟢 Creating person with data:', { user_id: user.id, name, role, relationship_type });
 
     const person = await createPerson({
       user_id: user.id,
@@ -46,62 +45,61 @@ export async function POST(request: NextRequest) {
       relationship_type
     }, supabase);
 
-    // Generate AI-powered welcome message using full context
+    // Generate AI-powered welcome message using Supabase Edge Function (server-side)
     try {
-      const initialMessage = await generatePersonWelcomeMessage({
-        name,
-        role,
-        relationship_type,
-        user_id: user.id
-      }, supabase);
+      console.log('🟢 Calling Supabase Edge Function for welcome message generation');
+      
+      const { data: welcomeData, error: welcomeError } = await supabase.functions.invoke('chat', {
+        body: {
+          action: 'generate_person_welcome',
+          name,
+          role,
+          relationship_type
+        }
+      });
 
-      console.log('AI-generated welcome message:', initialMessage);
-      console.log('Creating initial message for person:', person.id);
-      
-      // Insert the welcome message from Mano
-      const { data: messageData, error: messageError } = await supabase
-        .from('messages')
-        .insert({
-          person_id: person.id,
-          content: initialMessage,
-          is_user: false, // This is from Mano
-          user_id: user.id
-        })
-        .select()
-        .single();
+      if (welcomeError) {
+        console.error('Supabase function returned error:', welcomeError);
         
-      if (messageError) {
-        console.error('Error creating initial message:', messageError);
-      } else {
-        console.log('Initial message created successfully:', messageData);
+        // Try to get the actual error response body
+        try {
+          const errorResponse = await welcomeError.context?.text();
+          console.error('🔴 Error response body:', errorResponse);
+        } catch (e) {
+          console.error('🔴 Could not read error response body:', e);
+        }
+        
+        throw welcomeError;
       }
-    } catch (welcomeError) {
-      console.error('Failed to generate AI welcome message:', welcomeError);
-      
-      // Fallback to a simple welcome message so person creation still succeeds
-      const fallbackMessage = `Welcome to your conversation with ${name}! I'm here to help you navigate your relationship as their ${relationship_type === 'direct_report' ? 'manager' : relationship_type}. What would you like to discuss about ${name}?`;
-      
-      try {
+
+      const initialMessage = welcomeData?.welcomeMessage;
+      if (initialMessage) {
+        console.log('🟢 AI-generated welcome message:', initialMessage);
+        console.log('🟢 Creating initial message for person:', person.id);
+        
+        // Insert the welcome message from Mano
         const { data: messageData, error: messageError } = await supabase
           .from('messages')
           .insert({
             person_id: person.id,
-            content: fallbackMessage,
-            is_user: false,
+            content: initialMessage,
+            is_user: false, // This is from Mano
             user_id: user.id
           })
           .select()
           .single();
           
         if (messageError) {
-          console.error('Error creating fallback message:', messageError);
+          console.error('Error creating initial message:', messageError);
         } else {
-          console.log('Fallback message created:', messageData);
+          console.log('Initial message created successfully:', messageData);
         }
-      } catch (fallbackError) {
-        console.error('Failed to create fallback message:', fallbackError);
-        // Continue anyway - person creation should still succeed
       }
+    } catch (welcomeError) {
+      console.error('Failed to generate AI welcome message:', welcomeError);
+      // Graceful degradation: Person creation succeeds, but without welcome message
+      // User will see an empty conversation initially - AI will generate contextual responses when they start chatting
+      console.log('🔄 Person created successfully, but without AI welcome message. Conversation will be AI-generated when user starts chatting.');
     }
 
     return NextResponse.json({ person }, { status: 201 });

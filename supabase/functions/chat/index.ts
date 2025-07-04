@@ -29,6 +29,19 @@ interface ChatRequest {
   message: string;
 }
 
+interface PersonWelcomeRequest {
+  action: 'generate_person_welcome';
+  name: string;
+  role: string | null;
+  relationship_type: string;
+}
+
+interface TopicWelcomeRequest {
+  action: 'generate_topic_welcome';
+  title: string;
+  participants: string[];
+}
+
 interface Message {
   id: string;
   person_id: string;
@@ -342,8 +355,272 @@ serve(async (req) => {
       auth_header_present: !!req.headers.get('Authorization')
     })
 
-    // Parse request
-    const { person_id, message: userMessage }: ChatRequest = await req.json()
+    // Parse request body
+    const requestBody = await req.json()
+
+    // Handle person welcome message generation
+    if (requestBody.action === 'generate_person_welcome') {
+      const { name, role, relationship_type }: PersonWelcomeRequest = requestBody
+
+      if (!name || !relationship_type) {
+        return new Response(JSON.stringify({ error: 'name and relationship_type are required' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      try {
+        // Build management context for welcome message
+        const contextBuilder = new ManagementContextBuilder(supabase, user.id)
+        const { context: managementContext } = await contextBuilder.buildFullContext(
+          'temp', 
+          '', 
+          false
+        )
+
+        const roleDescription = role ? `${role}` : 'team member'
+        const teamSize = managementContext.people.length
+        const existingRoles = [...new Set(managementContext.people.map(p => p.role).filter(Boolean))]
+        const recentChallenges = managementContext.recent_themes.slice(0, 3)
+        const teamDynamics = managementContext.team_dynamics || []
+        const crossPersonInsights = managementContext.semantic_context?.cross_person_insights || []
+        const similarRoles = managementContext.people.filter(p => p.role === role)
+
+        // Build dynamic context based on existing team patterns
+        let contextualInsights = []
+        if (similarRoles.length > 0) {
+          contextualInsights.push(`Similar role: You already work with ${similarRoles.map(p => p.name).join(', ')} in ${role} roles`)
+        }
+        if (crossPersonInsights.length > 0) {
+          contextualInsights.push(`Team patterns: ${crossPersonInsights.slice(0, 2).join(', ')}`)
+        }
+        if (teamDynamics.length > 0) {
+          contextualInsights.push(`Current dynamics: ${teamDynamics.slice(0, 2).join(', ')}`)
+        }
+
+        const prompt = `You are Mano, an intelligent management assistant. A manager has just added a new person profile to track their relationship and you need to create a helpful message for the MANAGER about this person.
+
+**Person Being Added:**
+- Name: ${name}
+- Role: ${roleDescription}
+- Relationship to manager: ${relationship_type}
+
+**Manager's Current Context:**
+- Team size: ${teamSize} people  
+- Existing roles: ${existingRoles.join(', ') || 'First team member'}
+- Recent management challenges: ${recentChallenges.join(', ') || 'Building team foundation'}
+- Contextual insights: ${contextualInsights.join(' • ') || 'Fresh start with team building'}
+
+**IMPORTANT:** This message is FOR the manager, ABOUT ${name}. Address the manager directly, not ${name}.
+
+**Dynamic Instructions:**
+Create a contextual, personalized message (100-150 words) that:
+
+1. **References specific team context** - mention similar roles, patterns, or dynamics when relevant
+2. **Acknowledges ${name}'s unique position** in their current team structure  
+3. **Asks ONE highly relevant question** based on the team context and relationship type
+4. **Provides actionable insight** tailored to their specific management situation
+5. **Uses natural, conversational language** that feels personally generated
+
+**Relationship-specific focus:**
+- direct_report: Development opportunities, performance patterns, career growth in context of existing team
+- manager: Communication strategies, managing up effectively, alignment with their leadership style
+- peer: Collaboration opportunities, shared challenges, mutual support based on team dynamics  
+- stakeholder: Project alignment, communication cadence, success metrics relevant to current context
+
+Use 🤲 once naturally. Generate only the message content - make it feel like intelligent, contextual advice tailored to their specific situation.`
+
+        console.log('🤖 Generating AI welcome message for:', name)
+        console.log('🤖 ANTHROPIC_API_KEY available:', !!Deno.env.get('ANTHROPIC_API_KEY'))
+        console.log('🤖 ANTHROPIC_API_KEY length:', Deno.env.get('ANTHROPIC_API_KEY')?.length || 0)
+        
+        // Robust AI generation with retry logic - NO hardcoded fallbacks
+        let welcomeMessage = ''
+        const maxRetries = 3
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            const response = await anthropic.messages.create({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 300,
+              system: prompt,
+              messages: [
+                {
+                  role: 'user',
+                  content: `Create the welcome message for ${name}.`
+                }
+              ]
+            })
+
+            const textContent = response.content.find(block => block.type === 'text')
+            if (textContent?.text) {
+              welcomeMessage = textContent.text
+              break
+            }
+          } catch (retryError) {
+            console.error(`AI generation attempt ${attempt} failed:`, retryError)
+            if (attempt === maxRetries) {
+              throw new Error('AI generation failed after multiple attempts')
+            }
+            // Exponential backoff
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000))
+          }
+        }
+
+        if (!welcomeMessage) {
+          throw new Error('AI failed to generate welcome message')
+        }
+        
+        console.log('🤖 Generated welcome message:', welcomeMessage.substring(0, 100) + '...')
+        
+        return new Response(JSON.stringify({ welcomeMessage }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+
+      } catch (error) {
+        console.error('Error generating person welcome message:', error)
+        // Return error - let the API layer handle fallback logic
+        return new Response(JSON.stringify({ error: 'Failed to generate AI welcome message' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    // Handle topic welcome message generation
+    if (requestBody.action === 'generate_topic_welcome') {
+      const { title, participants }: TopicWelcomeRequest = requestBody
+
+      if (!title) {
+        return new Response(JSON.stringify({ error: 'title is required' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      try {
+        // Build management context for topic welcome message
+        const contextBuilder = new ManagementContextBuilder(supabase, user.id)
+        const { context: managementContext } = await contextBuilder.buildFullContext(
+          'general', 
+          '', 
+          true // Include proactive insights for topics
+        )
+
+        // Get participant names if any
+        const participantNames: string[] = []
+        if (participants.length > 0) {
+          const { data: people } = await supabase
+            .from('people')
+            .select('name')
+            .in('id', participants)
+            .eq('user_id', user.id)
+          
+          if (people) {
+            participantNames.push(...people.map(p => p.name))
+          }
+        }
+
+        const teamSize = managementContext.people.length
+        const recentChallenges = managementContext.recent_themes.slice(0, 3)
+        const crossConversationInsights = managementContext.semantic_context?.cross_person_insights || []
+        const teamDynamics = managementContext.team_dynamics || []
+
+        // Build contextual insights for topic
+        let topicInsights = []
+        if (crossConversationInsights.length > 0) {
+          topicInsights.push(`Team insights: ${crossConversationInsights.slice(0, 2).join(', ')}`)
+        }
+        if (teamDynamics.length > 0) {
+          topicInsights.push(`Current dynamics: ${teamDynamics.slice(0, 2).join(', ')}`)
+        }
+
+        const prompt = `You are Mano, an intelligent management assistant. A manager has just created a new topic for strategic discussion and you need to create a helpful welcome message for the MANAGER about this topic.
+
+**Topic Details:**
+- Title: "${title}"
+- Participants: ${participantNames.length > 0 ? participantNames.join(', ') : 'No specific participants yet'}
+
+**Manager's Current Context:**
+- Team size: ${teamSize} people
+- Recent management challenges: ${recentChallenges.join(', ') || 'Building team foundation'}
+- Cross-conversation insights: ${crossConversationInsights.slice(0, 3).join(', ') || 'Fresh strategic focus'}
+- Team dynamics: ${topicInsights.join(' • ') || 'Establishing new processes'}
+
+**Dynamic Instructions:**
+Create a strategic, contextual welcome message (120-180 words) that:
+
+1. **Acknowledges the topic** and its strategic importance in their current context
+2. **References specific team dynamics** or challenges when relevant
+3. **Suggests 2-3 specific discussion frameworks** or approaches tailored to this topic type
+4. **Connects to broader team context** if participants are specified
+5. **Asks ONE strategic question** to get productive discussion started
+
+**Topic-type specific guidance:**
+- If topic sounds like a project: Focus on deliverables, stakeholders, timeline frameworks
+- If topic sounds like team-related: Focus on dynamics, communication, development strategies
+- If topic sounds like strategy: Focus on decision-making frameworks, outcomes, measurement
+- If topic sounds like performance: Focus on goals, feedback systems, development plans
+
+Use 🤲 once naturally. Generate only the message content - make it feel like intelligent strategic guidance tailored to their specific management context and this topic's unique requirements.`
+
+        console.log('🤖 Generating AI topic welcome message for:', title)
+        
+        // Robust AI generation with retry logic - NO hardcoded fallbacks
+        let welcomeMessage = ''
+        const maxRetries = 3
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            const response = await anthropic.messages.create({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 350,
+              system: prompt,
+              messages: [
+                {
+                  role: 'user',
+                  content: `Create the welcome message for the topic "${title}".`
+                }
+              ]
+            })
+
+            const textContent = response.content.find(block => block.type === 'text')
+            if (textContent?.text) {
+              welcomeMessage = textContent.text
+              break
+            }
+          } catch (retryError) {
+            console.error(`AI topic generation attempt ${attempt} failed:`, retryError)
+            if (attempt === maxRetries) {
+              throw new Error('AI topic generation failed after multiple attempts')
+            }
+            // Exponential backoff
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000))
+          }
+        }
+
+        if (!welcomeMessage) {
+          throw new Error('AI failed to generate topic welcome message')
+        }
+        
+        console.log('🤖 Generated topic welcome message:', welcomeMessage.substring(0, 100) + '...')
+        
+        return new Response(JSON.stringify({ welcomeMessage }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+
+      } catch (error) {
+        console.error('Error generating topic welcome message:', error)
+        // Return error - let the API layer handle fallback logic
+        return new Response(JSON.stringify({ error: 'Failed to generate AI topic welcome message' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    // Handle regular chat requests
+    const { person_id, message: userMessage }: ChatRequest = requestBody
 
     if (!person_id || !userMessage) {
       return new Response(JSON.stringify({ error: 'person_id and message are required' }), {

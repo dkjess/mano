@@ -73,6 +73,12 @@ export default function NewPersonPage() {
     });
     
     try {
+      console.log('🔵 Frontend: About to call /api/people with data:', {
+        name: trimmedName,
+        role: trimmedRole || null,
+        relationship_type: formData.relationship_type
+      });
+      
       const response = await fetch('/api/people', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -82,10 +88,14 @@ export default function NewPersonPage() {
           relationship_type: formData.relationship_type
         })
       });
+      
+      console.log('🔵 Frontend: API response status:', response.status);
 
       const data = await response.json();
+      console.log('🔵 Frontend: API response data:', data);
       
       if (response.ok) {
+        console.log('🔵 Frontend: Person created successfully:', data.person);
         // Add person to context to avoid refetching
         addPerson(data.person);
         
