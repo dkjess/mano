@@ -433,6 +433,8 @@ Use 🤲 once naturally. Generate only the message content - make it feel like i
         console.log('🤖 Generating AI welcome message for:', name)
         console.log('🤖 ANTHROPIC_API_KEY available:', !!Deno.env.get('ANTHROPIC_API_KEY'))
         console.log('🤖 ANTHROPIC_API_KEY length:', Deno.env.get('ANTHROPIC_API_KEY')?.length || 0)
+        console.log('🤖 ANTHROPIC_API_KEY starts with:', Deno.env.get('ANTHROPIC_API_KEY')?.substring(0, 10) || 'null')
+        console.log('🤖 All environment variables available:', Object.keys(Deno.env.toObject()).sort())
         
         // Robust AI generation with retry logic - NO hardcoded fallbacks
         let welcomeMessage = ''
