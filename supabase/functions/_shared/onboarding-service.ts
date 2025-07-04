@@ -4,8 +4,11 @@ export interface UserProfile {
   id: string;
   user_id: string;
   preferred_name: string | null;
+  call_name: string | null;
+  job_role: string | null;
+  company: string | null;
   onboarding_completed: boolean;
-  onboarding_step: string;
+  onboarding_step: string | number;
   created_at: string;
   updated_at: string;
 }

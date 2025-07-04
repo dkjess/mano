@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest } from 'next/server';
+import { generateTopicWelcomeMessage } from '@/lib/welcome-message-generation';
 
 export async function GET() {
   try {
@@ -60,6 +61,33 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    // Generate AI-powered welcome message for the new topic
+    const welcomeMessage = await generateTopicWelcomeMessage({
+      title: title.trim(),
+      participants,
+      user_id: user.id
+    }, supabase);
+
+    console.log('Creating initial message for topic:', topic.id);
+    
+    // Insert the welcome message from Mano
+    const { data: messageData, error: messageError } = await supabase
+      .from('messages')
+      .insert({
+        topic_id: topic.id,
+        content: welcomeMessage,
+        is_user: false, // This is from Mano
+        user_id: user.id
+      })
+      .select()
+      .single();
+      
+    if (messageError) {
+      console.error('Error creating initial topic message:', messageError);
+    } else {
+      console.log('Initial topic message created:', messageData);
+    }
 
     return Response.json({ topic });
   } catch (error) {

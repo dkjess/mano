@@ -39,6 +39,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // If not authenticated and trying to access protected route
   if (
     request.nextUrl.pathname !== "/" &&
     !user &&
@@ -48,6 +49,25 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
     return NextResponse.redirect(url);
+  }
+
+  // If authenticated and not on auth/onboarding pages, check onboarding status
+  if (user && 
+      !request.nextUrl.pathname.startsWith('/auth') && 
+      !request.nextUrl.pathname.startsWith('/onboarding')
+  ) {
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('onboarding_completed')
+      .eq('user_id', user.id)
+      .single();
+
+    // If onboarding not completed, redirect to onboarding (including root path)
+    if (profile && !profile.onboarding_completed) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/onboarding';
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;

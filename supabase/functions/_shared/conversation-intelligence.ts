@@ -1,5 +1,6 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { VectorService, VectorSearchResult } from './vector-service.ts'
+import { CrossConversationIntelligence, type CrossConversationInsight } from './cross-conversation-intelligence.ts'
 
 export interface ConversationMemory {
   reference_type: 'specific_conversation' | 'pattern_across_people' | 'recent_theme' | 'long_term_pattern';
@@ -187,6 +188,32 @@ export class ConversationIntelligence {
   ): Promise<ConversationInsight[]> {
     const insights: ConversationInsight[] = [];
 
+    // Detect cross-conversation intelligence insights
+    if (process.env.ANTHROPIC_API_KEY) {
+      try {
+        const crossConversationIntelligence = new CrossConversationIntelligence(
+          this.supabase,
+          this.userId,
+          process.env.ANTHROPIC_API_KEY
+        );
+        
+        const crossInsights = await crossConversationIntelligence.getCrossConversationInsights(managementContext);
+        
+        // Convert cross-conversation insights to conversation insights
+        for (const crossInsight of crossInsights.slice(0, 2)) {
+          insights.push({
+            type: crossInsight.insight_type as any,
+            message: crossInsight.description,
+            confidence: crossInsight.confidence_score,
+            supporting_evidence: crossInsight.supporting_evidence,
+            suggested_action: crossInsight.recommended_actions[0]
+          });
+        }
+      } catch (error) {
+        console.error('Failed to get cross-conversation insights:', error);
+      }
+    }
+
     // Detect team communication patterns
     const communicationInsight = this.analyzeCommunicationPatterns(managementContext);
     if (communicationInsight) {
@@ -205,7 +232,7 @@ export class ConversationIntelligence {
       insights.push(escalationInsight);
     }
 
-    return insights.slice(0, 2); // Limit insights
+    return insights.slice(0, 3); // Increased limit to include cross-conversation insights
   }
 
   // Helper methods

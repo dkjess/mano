@@ -53,7 +53,7 @@ export function useStreamingResponse() {
         if (typingStarted) return;
         typingStarted = true;
         
-        const typingSpeed = 25; // milliseconds per character
+        const typingSpeed = 5; // milliseconds per character (very fast typing)
         
         streamIntervalRef.current = setInterval(() => {
           if (displayedLength < fullBuffer.length) {

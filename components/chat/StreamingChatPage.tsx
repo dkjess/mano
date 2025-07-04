@@ -22,6 +22,7 @@ export function StreamingChatPage({
     addUserMessage,
     addLoadingMessage,
     startStreamingMessage,
+    updateStreamingMessage,
     completeStreamingMessage
   } = useMessageState();
 
@@ -56,6 +57,24 @@ export function StreamingChatPage({
       // Handle error - maybe show error message or retry option
     }
   };
+  
+  // Update the message in messages array when streaming content changes
+  useEffect(() => {
+    if (streamingMessage && messages.some(m => m.id === streamingMessage.id)) {
+      updateStreamingMessage(streamingMessage.id, streamingMessage.content);
+    }
+  }, [streamingMessage?.content, streamingMessage?.id, updateStreamingMessage, messages]);
+  
+  // Clear streaming message after it's complete and saved
+  useEffect(() => {
+    if (streamingMessage?.isComplete && !streamingMessage.isStreaming) {
+      // Small delay to ensure the complete message is rendered
+      const timer = setTimeout(() => {
+        clearStreamingMessage();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, clearStreamingMessage]);
 
   // Scroll to bottom after messages render
   useEffect(() => {
@@ -70,8 +89,9 @@ export function StreamingChatPage({
   }, [personId, messages.length, streamingMessage?.content]);
 
   // Combine regular messages with streaming message
+  // Only add streaming message if it's not already in messages array
   const allMessages: Message[] = [...messages];
-  if (streamingMessage) {
+  if (streamingMessage && !messages.some(m => m.id === streamingMessage.id)) {
     allMessages.push({
       id: streamingMessage.id,
       content: streamingMessage.content,
@@ -120,8 +140,8 @@ export function StreamingChatPage({
               avatar={message.isUser ? undefined : '✋'}
               onComplete={() => {
                 if (streamingMessage?.id === message.id) {
-                  completeStreamingMessage(message.id, message.content);
-                  clearStreamingMessage();
+                  completeStreamingMessage(message.id, streamingMessage.content);
+                  // Don't clear immediately - wait for the effect to run
                 }
               }}
             />

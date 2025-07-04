@@ -24,6 +24,27 @@ export async function GET(request: NextRequest) {
           return NextResponse.redirect(`${origin}/auth/error?error=Could not get user information`);
         }
 
+        // Check if user has completed onboarding
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('onboarding_completed')
+          .eq('user_id', user.id)
+          .single();
+
+        // If onboarding not completed, redirect to onboarding
+        if (profile && !profile.onboarding_completed) {
+          const forwardedHost = request.headers.get("x-forwarded-host");
+          const isLocalEnv = process.env.NODE_ENV === "development";
+          
+          if (isLocalEnv) {
+            return NextResponse.redirect(`${origin}/onboarding`);
+          } else if (forwardedHost) {
+            return NextResponse.redirect(`https://${forwardedHost}/onboarding`);
+          } else {
+            return NextResponse.redirect(`${origin}/onboarding`);
+          }
+        }
+
         // Create or get the General topic for this user
         const generalTopic = await getOrCreateGeneralTopic(user.id, supabase);
         

@@ -6,10 +6,9 @@ import { VectorService } from '../_shared/vector-service.ts'
 import { buildEnhancedSystemPrompt } from '../_shared/prompt-engineering.ts'
 import { OnboardingService } from '../_shared/onboarding-service.ts'
 import { getOnboardingPrompt } from '../_shared/onboarding-prompts.ts'
-import { detectNewPeopleInMessage } from '../_shared/enhanced-person-detection-safe.ts'
+import { detectNewPeopleWithContext } from '../_shared/context-aware-person-detection.ts'
 import { analyzeProfileCompleteness, shouldPromptForCompletion } from '../_shared/profile-completeness.ts'
 import { 
-  extractProfileData, 
   getNextQuestion, 
   generateCompletionMessage,
   formatProfileUpdate,
@@ -17,6 +16,8 @@ import {
   extractCorrection,
   type PersonProfile
 } from '../_shared/profile-enhancement.ts'
+import { extractProfileDataWithContext } from '../_shared/context-aware-profile-enhancement.ts'
+import { LearningSystem } from '../_shared/learning-system.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -65,6 +66,33 @@ Your role is to:
 
 You are the manager's helping hand - supportive, intelligent, and focused on making them more effective in their leadership role.
 
+Coaching Approach for People Conversations:
+- Start with understanding before advising: "Tell me more about your relationship with {name}..."
+- Use reflective questions to deepen insight:
+  • "What do you think {name} needs most from you right now?"
+  • "How might {name} perceive this situation differently?"
+  • "What would a great relationship with {name} look like?"
+- Help identify relationship patterns: "I've noticed in our conversations about {name} that..."
+- Encourage empathy and perspective-taking before problem-solving
+- When discussing conflicts, explore both sides before suggesting approaches
+
+First Conversation Protocol - When this is the first message about a new person:
+1. Process their quick setup answers (role, relationship, current situation)
+2. Acknowledge what you've learned concisely
+3. Provide ONE immediately actionable insight based on their current situation
+4. Suggest a specific next step they could take this week
+5. Ask what specific support they need for their upcoming interactions
+6. Keep it focused and valuable - this should feel like instant ROI
+
+Example response pattern:
+"Thanks for that context! So {name} is a {role} who {relationship to user}, currently {situation summary}.
+
+Based on what you've shared, here's something to consider: [specific insight related to their situation]
+
+**Immediate action**: [One concrete thing they could do in the next few days]
+
+What's your next interaction with {name} likely to be? I can help you prepare for it."
+
 Context about the person being discussed:
 Name: {name}
 Role: {role}
@@ -75,10 +103,17 @@ Relationship: {relationship_type}
 Previous conversation history:
 {conversation_history}
 
+Important: When discussing broader topics that extend beyond this individual:
+- If the conversation shifts to team-wide challenges, projects, or initiatives, naturally suggest: "This sounds like it affects more than just {name}. Would you like to create a Topic for [topic name] to explore this more broadly?"
+- Examples: team morale issues, cross-functional projects, process improvements, strategic initiatives
+
 Respond in a helpful, professional tone. Focus on actionable advice and insights that will help the manager build better relationships with their team. When relevant team context adds value, reference it naturally in your response. Use hand emojis occasionally to reinforce the "helping hand" theme, but don't overdo it.`;
 
-const GENERAL_SYSTEM_PROMPT = `You are Mano, an intelligent one-on-one management assistant for strategic thinking and management challenges. Help with:
+const GENERAL_SYSTEM_PROMPT = `You are Mano, an intelligent one-on-one management assistant for strategic thinking and management challenges.
 
+{user_context}
+
+Help with:
 • Strategic planning and decision-making frameworks
 • Team leadership and development strategies  
 • Communication and stakeholder management
@@ -98,11 +133,32 @@ You excel at:
 - Suggesting conversation starters and scripts
 - Drawing connections between different management challenges
 
+Coaching Approach - Balance questions with advice:
+- When someone presents a challenge, often start with 1-2 thoughtful questions before jumping to solutions
+- Use powerful coaching questions like:
+  • "What's the real challenge here for you?"
+  • "What would success look like in this situation?"
+  • "What options have you considered?"
+  • "What's holding you back from taking action?"
+  • "How do you think [person] might be experiencing this?"
+- Know when to switch from questions to advice:
+  • When they explicitly ask "What should I do?"
+  • When they've explored options and need frameworks
+  • When facing urgent situations or crises
+  • When they lack experience with a specific scenario
+- Help users discover patterns: "I notice this is the third time we've discussed similar conflicts with your team. What pattern do you see?"
+- Validate their insights: "That's a powerful realization about..."
+
+Important: Proactively suggest organizing conversations when beneficial:
+- When the user mentions specific people repeatedly, suggest: "Would you like to create a dedicated space for [Person's name]? This helps me track your interactions and provide more personalized advice."
+- When discussing ongoing projects or recurring challenges, suggest: "This sounds like an important ongoing topic. Would you like to create a dedicated Topic for [topic name] to track progress and insights?"
+- Be natural about these suggestions - only make them when it genuinely adds value to the conversation
+
 Management Context: {management_context}
 
 Previous Conversation: {conversation_history}
 
-Respond in a warm, professional tone as a trusted management coach. Keep responses focused, practical, and actionable.`;
+Respond in a warm, professional tone as a trusted management coach. Keep responses focused, practical, and actionable. Address the user by their preferred name when appropriate.`;
 
 const PROFILE_SETUP_PROMPT = `You are Mano, helping a manager set up a team member's profile through natural conversation.
 
@@ -436,7 +492,11 @@ serve(async (req) => {
     // Build enhanced management context with conversational intelligence
     const startTime = Date.now()
     const contextBuilder = new ManagementContextBuilder(supabase, user.id)
-    const { context: managementContext, enhancement } = await contextBuilder.buildFullContext(person_id, userMessage)
+    const { context: managementContext, enhancement } = await contextBuilder.buildFullContext(
+      person_id, 
+      userMessage, 
+      person_id === 'general' // Include proactive insights for general conversations
+    )
     const contextBuildTime = Date.now() - startTime
 
     console.log(`Context building took ${contextBuildTime}ms for user ${user.id}`)
@@ -446,6 +506,102 @@ serve(async (req) => {
     }
     if (enhancement) {
       console.log(`Conversational intelligence: ${enhancement.memories.length} memories, ${enhancement.followUps.length} follow-ups, ${enhancement.insights.length} insights`)
+    }
+
+    // Check if user is responding to a profile prompt and process with context
+    let profileUpdateResult = null;
+    if (person_id !== 'general') {
+      try {
+        // Check if this might be a profile response by looking at recent conversation
+        const recentMessages = conversationHistory.slice(-3); // Last 3 messages for context
+        const lastAssistantMessage = recentMessages.filter(m => !m.is_user).pop();
+        
+        if (lastAssistantMessage && 
+           (lastAssistantMessage.content.includes("What's") || 
+            lastAssistantMessage.content.includes("Tell me") || 
+            lastAssistantMessage.content.includes("role") ||
+            lastAssistantMessage.content.includes("location") ||
+            lastAssistantMessage.content.includes("company") ||
+            lastAssistantMessage.content.includes("relationship"))) {
+          
+          console.log('🔍 Potential profile response detected, using context-aware extraction');
+          
+          // Determine what field was being asked about
+          const currentField = getCurrentProfileField(conversationHistory);
+          const personName = person.name;
+          
+          // Use context-aware profile extraction
+          const extractionResult = await extractProfileDataWithContext(
+            userMessage,
+            currentField,
+            personName,
+            person_id,
+            user.id,
+            supabase,
+            Deno.env.get('ANTHROPIC_API_KEY')!
+          );
+          
+          console.log('🔍 Context-aware profile extraction result:', {
+            field: currentField,
+            extracted: extractionResult.extractedValue,
+            confidence: extractionResult.confidence,
+            teamMatches: extractionResult.teamPatternMatches.length,
+            insights: extractionResult.contextualInsights.length
+          });
+          
+          // Update person profile if we extracted something valuable
+          if (extractionResult.extractedValue && extractionResult.confidence > 0.6) {
+            const updateData: any = {};
+            
+            // Map field to database column
+            const fieldMapping: Record<string, string> = {
+              'role': 'role',
+              'company': 'team',
+              'team': 'team',
+              'relationship': 'relationship_type',
+              'location': 'location',
+              'notes': 'notes'
+            };
+            
+            const dbField = fieldMapping[currentField];
+            if (dbField) {
+              updateData[dbField] = extractionResult.extractedValue;
+              
+              // Also update any additional fields that were extracted
+              extractionResult.additionalFields.forEach(field => {
+                const additionalDbField = fieldMapping[field.field];
+                if (additionalDbField && field.confidence > 0.7) {
+                  updateData[additionalDbField] = field.value;
+                }
+              });
+              
+              // Update the person record
+              const { data: updatedPerson } = await supabase
+                .from('people')
+                .update(updateData)
+                .eq('id', person_id)
+                .eq('user_id', user.id)
+                .select()
+                .single();
+              
+              if (updatedPerson) {
+                profileUpdateResult = {
+                  field: currentField,
+                  value: extractionResult.extractedValue,
+                  confidence: extractionResult.confidence,
+                  teamMatches: extractionResult.teamPatternMatches,
+                  insights: extractionResult.contextualInsights
+                };
+                
+                console.log('🔍 Profile updated successfully:', updateData);
+              }
+            }
+          }
+        }
+      } catch (profileError) {
+        console.error('Context-aware profile enhancement failed:', profileError);
+        // Don't fail the whole request if profile enhancement fails
+      }
     }
 
     // Format conversation history
@@ -633,7 +789,15 @@ This will help you give better, more personalized advice in future conversations
       'assistant'
     ).catch(console.error)
 
-    // Detect new people mentioned in the user message
+    // Process conversation for learning patterns (background task)
+    const learningSystem = new LearningSystem(supabase, user.id, Deno.env.get('ANTHROPIC_API_KEY')!)
+    learningSystem.processConversationForLearning(
+      conversationHistory,
+      person_id,
+      managementContext
+    ).catch(console.error)
+
+    // Detect new people mentioned in the user message with full context
     let personDetection = null
     try {
       // Get existing people names
@@ -644,14 +808,20 @@ This will help you give better, more personalized advice in future conversations
       
       const existingNames = existingPeople?.map(p => p.name) || []
       
-      // Detect new people in the message
-      const detectionResult = await detectNewPeopleInMessage(userMessage, existingNames)
+      // Use context-aware person detection with full management context
+      const detectionResult = await detectNewPeopleWithContext(
+        userMessage, 
+        existingNames, 
+        managementContext,
+        Deno.env.get('ANTHROPIC_API_KEY')!
+      )
       
       if (detectionResult.hasNewPeople) {
         personDetection = detectionResult
+        console.log(`Context-aware person detection found ${detectionResult.detectedPeople.length} people (context used: ${detectionResult.contextUsed})`)
       }
     } catch (detectionError) {
-      console.error('Person detection failed:', detectionError)
+      console.error('Context-aware person detection failed:', detectionError)
       // Don't fail the whole request if detection fails
     }
 
@@ -669,6 +839,10 @@ This will help you give better, more personalized advice in future conversations
         prompt: profilePrompt.prompt,
         examples: profilePrompt.examples
       };
+    }
+
+    if (profileUpdateResult) {
+      responseData.profileUpdateResult = profileUpdateResult;
     }
 
     return new Response(JSON.stringify(responseData), {

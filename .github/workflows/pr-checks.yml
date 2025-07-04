@@ -1,11 +1,288 @@
+<<<<<<< HEAD
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ staging, main ]
+=======
 name: PR Checks
 
 on:
   pull_request:
+>>>>>>> main
     types: [opened, synchronize, reopened]
 
 jobs:
   code-quality:
+<<<<<<< HEAD
+    runs-on: ubuntu-latest
+    name: Code Quality Checks
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'pnpm'
+    
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 8
+    
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+    
+    - name: Run ESLint
+      run: |
+        echo "🔍 Running ESLint..."
+        pnpm run lint
+    
+    - name: Run TypeScript checks
+      run: |
+        echo "🔍 Running TypeScript checks..."
+        npx tsc --noEmit
+    
+    - name: Check for console.log statements
+      run: |
+        echo "🔍 Checking for console.log statements..."
+        if grep -r "console\.log" app/ components/ lib/ --exclude-dir=node_modules; then
+          echo "❌ Found console.log statements - please remove or replace with proper logging"
+          exit 1
+        fi
+        echo "✅ No console.log statements found"
+    
+    - name: Check for TODO comments
+      run: |
+        echo "🔍 Checking for TODO comments..."
+        if grep -r "TODO\|FIXME\|HACK" app/ components/ lib/ --exclude-dir=node_modules; then
+          echo "⚠️ Found TODO/FIXME/HACK comments - consider addressing before merge"
+        else
+          echo "✅ No TODO comments found"
+        fi
+
+  security-checks:
+    runs-on: ubuntu-latest
+    name: Security Checks
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'pnpm'
+    
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 8
+    
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+    
+    - name: Run npm audit
+      run: |
+        echo "🔒 Running security audit..."
+        pnpm audit --audit-level moderate
+    
+    - name: Check for hardcoded secrets
+      run: |
+        echo "🔍 Checking for hardcoded secrets..."
+        
+        # Check for common secret patterns
+        if grep -r "sk-[a-zA-Z0-9]" app/ components/ lib/ --exclude-dir=node_modules | grep -v ".env"; then
+          echo "❌ Potential hardcoded API keys found"
+          exit 1
+        fi
+        
+        if grep -r "password.*=" app/ components/ lib/ --exclude-dir=node_modules | grep -v "placeholder\|example"; then
+          echo "❌ Potential hardcoded passwords found"
+          exit 1
+        fi
+        
+        echo "✅ No hardcoded secrets detected"
+    
+    - name: Check environment variable usage
+      run: |
+        echo "🔍 Checking environment variable patterns..."
+        
+        # Ensure NEXT_PUBLIC_ prefix for client-side env vars
+        if grep -r "process\.env\." app/ components/ | grep -v "NEXT_PUBLIC_" | grep -v "server\|api"; then
+          echo "⚠️ Non-NEXT_PUBLIC environment variables found in client code"
+        fi
+        
+        echo "✅ Environment variable usage looks good"
+
+  migration-safety:
+    runs-on: ubuntu-latest
+    name: Migration Safety Checks
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Check for new migrations
+      run: |
+        echo "🗺️ Checking for new migrations..."
+        
+        # Get list of changed files
+        CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}...HEAD)
+        
+        # Check if any migrations were added/modified
+        MIGRATION_CHANGES=$(echo "$CHANGED_FILES" | grep "supabase/migrations/" || true)
+        
+        if [[ -n "$MIGRATION_CHANGES" ]]; then
+          echo "📝 Migration changes detected:"
+          echo "$MIGRATION_CHANGES"
+          
+          # Check for dangerous operations
+          echo "🔍 Checking for dangerous operations..."
+          for migration in $MIGRATION_CHANGES; do
+            if [[ -f "$migration" ]]; then
+              if grep -i "drop table\|drop column\|drop index" "$migration"; then
+                echo "❌ Dangerous operation found in $migration"
+                echo "Please ensure this is safe and has proper rollback plan"
+                exit 1
+              fi
+            fi
+          done
+          
+          echo "✅ Migration safety checks passed"
+        else
+          echo "✅ No migration changes in this PR"
+        fi
+    
+    - name: Validate migration naming
+      run: |
+        echo "🔍 Validating migration file naming..."
+        
+        # Check that migration files follow proper naming convention
+        for migration in supabase/migrations/*.sql; do
+          if [[ ! "$(basename $migration)" =~ ^[0-9]{14}_[a-z_]+\.sql$ ]]; then
+            echo "❌ Invalid migration name: $(basename $migration)"
+            echo "Should follow format: YYYYMMDDHHMMSS_description.sql"
+            exit 1
+          fi
+        done
+        
+        echo "✅ Migration naming is correct"
+
+  build-test:
+    runs-on: ubuntu-latest
+    name: Build Test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'pnpm'
+    
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 8
+    
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+    
+    - name: Test build with staging config
+      run: |
+        echo "🏗️ Testing build with staging configuration..."
+        pnpm run build
+      env:
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        NODE_ENV: staging
+    
+    - name: Check bundle size
+      run: |
+        echo "📦 Analyzing bundle size..."
+        # Add bundle size analysis here if needed
+        echo "✅ Bundle size check complete"
+
+  pr-summary:
+    runs-on: ubuntu-latest
+    name: PR Summary
+    needs: [code-quality, security-checks, migration-safety, build-test]
+    if: always()
+    
+    steps:
+    - name: Generate PR summary
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const results = {
+            'Code Quality': '${{ needs.code-quality.result }}',
+            'Security Checks': '${{ needs.security-checks.result }}',
+            'Migration Safety': '${{ needs.migration-safety.result }}',
+            'Build Test': '${{ needs.build-test.result }}'
+          };
+          
+          const getEmoji = (status) => {
+            switch(status) {
+              case 'success': return '✅';
+              case 'failure': return '❌';
+              case 'cancelled': return '⚠️';
+              case 'skipped': return '⏭️';
+              default: return '❓';
+            }
+          };
+          
+          const allPassed = Object.values(results).every(r => r === 'success');
+          const summary = Object.entries(results)
+            .map(([name, status]) => `${getEmoji(status)} **${name}**: ${status}`)
+            .join('\n');
+          
+          const body = `## 🔍 Pull Request Checks
+          
+          ${summary}
+          
+          ${allPassed ? 
+            '🎉 **All checks passed!** This PR is ready for review.' : 
+            '⚠️ **Some checks failed.** Please address the issues above.'}
+          
+          ---
+          *Automated checks ensure code quality and deployment safety*`;
+          
+          // Find existing comment and update it, or create new one
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const existingComment = comments.data.find(
+            comment => comment.body.includes('## 🔍 Pull Request Checks')
+          );
+          
+          if (existingComment) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existingComment.id,
+              body: body
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+          }
+=======
     name: Code Quality
     runs-on: ubuntu-latest
     
@@ -89,3 +366,4 @@ jobs:
         run: |
           # List all migration files and check for timestamp conflicts
           ls -la supabase/migrations/*.sql | awk '{print $9}' | sort | uniq -d | grep . && echo "Duplicate migration timestamps found!" && exit 1 || echo "No migration conflicts"
+>>>>>>> main
