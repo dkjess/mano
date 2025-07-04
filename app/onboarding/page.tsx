@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { getOrCreateGeneralTopicClient } from '@/lib/general-topic'
 
 type OnboardingStep = 0 | 2 | 3 | 4 | 5  // Step 1 (email verification) is skipped
 
@@ -147,6 +148,9 @@ export default function OnboardingPage() {
             })
             .eq('user_id', user.id)
           
+          // Create welcome message
+          await createWelcomeMessage(user.id, callName, jobRole)
+          
           router.push('/')
         }
       } else if (currentStep === 5) {
@@ -162,6 +166,9 @@ export default function OnboardingPage() {
               company: company || null
             })
             .eq('user_id', user.id)
+          
+          // Create welcome message
+          await createWelcomeMessage(user.id, callName, jobRole)
           
           router.push('/')
         }
@@ -180,6 +187,64 @@ export default function OnboardingPage() {
     }
   }
 
+  const createWelcomeMessage = async (userId: string, userName: string, userRole?: string) => {
+    try {
+      // Get or create the General topic
+      const generalTopic = await getOrCreateGeneralTopicClient(userId, supabase)
+      
+      // Create personalized welcome message
+      const roleContext = userRole ? ` as a ${userRole}` : ''
+      const welcomeContent = `Hi ${userName}! 👋 
+
+I'm Mano, your AI management companion. I'm here to help you become a better leader and navigate the complexities of management${roleContext}.
+
+**Here's how I can help you:**
+
+• **Difficult conversations** - Practice tough discussions, get scripts for feedback, handle conflict resolution
+• **Decision making** - Work through complex decisions with incomplete information, weigh trade-offs
+• **Developing your people** - Career development plans, coaching strategies, performance management  
+• **Managing up** - Build stronger relationships with your manager, advocate for your team, navigate politics
+• **Staying calm under pressure** - Stress management techniques, maintaining composure in crises
+• **Building trust** - Become the manager people want to work for, strengthen team dynamics
+
+**💡 How to get the most from Mano:**
+
+**Add People** when you want to:
+- Prepare for 1-on-1s with specific team members
+- Navigate complex relationships with your manager or peers
+- Track ongoing development conversations
+- Get personalized advice about individual situations
+
+**Create Topics** when you're working on:
+- Specific projects or initiatives
+- Recurring challenges (like "Team Morale" or "Technical Debt")
+- Strategic planning areas
+- Cross-functional collaborations
+
+I'll remember everything we discuss and help you see patterns across conversations. When you talk about someone in General chat, I might suggest creating a dedicated space for them.
+
+**My coaching style:**
+I believe the best insights often come from within. Sometimes I'll ask you thoughtful questions to help you explore your own thinking before offering advice. Other times, when you need specific guidance or frameworks, I'll share them directly. Think of me as a thought partner who helps you discover solutions, not just someone who gives answers.
+
+What's on your mind today? Feel free to share a current challenge, or I can help you set up your first few People profiles to get started.`
+
+      // Insert the welcome message
+      await supabase
+        .from('messages')
+        .insert({
+          content: welcomeContent,
+          topic_id: generalTopic.id,
+          person_id: null,
+          is_user: false, // This is from Mano (assistant)
+          user_id: userId
+        })
+
+    } catch (error) {
+      console.error('Error creating welcome message:', error)
+      // Don't block onboarding completion if welcome message fails
+    }
+  }
+
   const handleSkip = async () => {
     if (currentStep === 4) {
       // Company is optional, complete onboarding
@@ -193,6 +258,9 @@ export default function OnboardingPage() {
             job_role: jobRole
           })
           .eq('user_id', user.id)
+        
+        // Create welcome message
+        await createWelcomeMessage(user.id, callName, jobRole)
         
         router.push('/')
       }

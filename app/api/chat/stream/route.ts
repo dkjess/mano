@@ -5,6 +5,7 @@ import { getChatCompletionStreaming } from '@/lib/claude';
 import { formatContextForPrompt, type ManagementContextData, type TeamContext, type PersonContext } from '@/lib/management-context';
 import { BUCKET_NAME } from '@/lib/storage';
 import type { Person } from '@/types/database';
+import { processFilesWithContext } from '@/lib/context-aware-file-processing';
 
 // Import the vector-enabled context system
 interface ManagementContext {
@@ -650,8 +651,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If the user uploaded files, fetch them to include in context
+    // Process uploaded files with context-aware analysis
     let fileContext = '';
+    let fileInsights: any[] = [];
     console.log('🔍 DEBUG: Checking for files...', { hasFiles, userMessageId: userMessageRecord?.id });
     
     if (hasFiles && userMessageRecord) {
@@ -665,54 +667,40 @@ export async function POST(request: NextRequest) {
         console.log('🔍 DEBUG: Message files query result:', { messageFiles, count: messageFiles?.length });
         
         if (messageFiles && messageFiles.length > 0) {
-          fileContext = `\n\n[Attached files:]\n`;
-          console.log('🔍 DEBUG: Processing', messageFiles.length, 'files...');
+          console.log('🔍 DEBUG: Processing', messageFiles.length, 'files with context awareness...');
           
-          // Use extracted content from database (much simpler and faster)
-          for (const file of messageFiles) {
-            console.log('🔍 DEBUG: Processing file:', {
-              name: file.original_name,
-              type: file.file_type,
-              contentType: file.content_type,
-              hasExtractedContent: !!file.extracted_content,
-              processingStatus: file.processing_status
-            });
-            
-            fileContext += `\n--- File: ${file.original_name} ---\n`;
-            
-            // Use extracted content from database
-            if (file.extracted_content) {
-              console.log('🔍 DEBUG: Using extracted content from database:', { 
-                contentLength: file.extracted_content.length,
-                preview: file.extracted_content.substring(0, 100) + (file.extracted_content.length > 100 ? '...' : '')
-              });
-              
-              // Limit content to avoid token limits
-              const content = file.extracted_content.length > 5000 
-                ? file.extracted_content.substring(0, 5000) + '\n...[truncated]'
-                : file.extracted_content;
-              fileContext += `Content:\n${content}\n`;
-            } else if (file.processing_status === 'processing') {
-              console.log('🔍 DEBUG: File is still being processed');
-              fileContext += `[File is being processed...]\n`;
-            } else if (file.processing_status === 'failed') {
-              console.log('🔍 DEBUG: File processing failed');
-              fileContext += `[File processing failed]\n`;
-            } else if (file.processing_status === 'pending') {
-              console.log('🔍 DEBUG: File processing is pending');
-              fileContext += `[File processing is pending...]\n`;
-            } else {
-              console.log('🔍 DEBUG: No text content available for file type');
-              fileContext += `[No text content available for this file type]\n`;
-            }
-            
-            fileContext += `--- End of ${file.original_name} ---\n`;
-          }
+          // Use context-aware file processing
+          const processedFiles = messageFiles.map(file => ({
+            name: file.original_name,
+            fileType: file.file_type,
+            contentType: file.content_type,
+            extractedContent: file.extracted_content || '',
+            processingStatus: file.processing_status
+          }));
+          
+          const fileProcessingResult = await processFilesWithContext(
+            processedFiles,
+            userMessage,
+            user.id,
+            supabase
+          );
+          
+          fileContext = fileProcessingResult.fileContext;
+          fileInsights = fileProcessingResult.fileInsights;
+          
+          console.log('🔍 DEBUG: Context-aware file processing completed:', { 
+            fileContextLength: fileContext.length,
+            insightsCount: fileInsights.length,
+            hasSemanticConnections: fileProcessingResult.hasSemanticConnections,
+            preview: fileContext.substring(0, 200) + (fileContext.length > 200 ? '...' : '')
+          });
         } else {
           console.log('🔍 DEBUG: No files found for message ID:', userMessageRecord.id);
         }
       } catch (error) {
-        console.error('🔍 DEBUG: Error fetching message files:', error);
+        console.error('🔍 ERROR: Context-aware file processing failed:', error);
+        // Fallback to basic file handling if context processing fails
+        fileContext = ''; // Will be handled by the existing fallback logic
       }
     } else {
       console.log('🔍 DEBUG: Skipping file processing - hasFiles:', hasFiles, 'userMessageRecord:', !!userMessageRecord);

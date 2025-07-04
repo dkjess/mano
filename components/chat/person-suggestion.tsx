@@ -88,33 +88,22 @@ export default function PersonSuggestion({
         throw new Error('User not authenticated');
       }
 
-      // Create the person with minimal data
-      const { data: person, error: personError } = await supabase
-        .from('people')
-        .insert({
+      // Create the person through the API to ensure server-side logic runs
+      const response = await fetch('/api/people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name: personName,
           role: null,
-          relationship_type: 'peer', // Default, will be updated through conversation
-          user_id: user.id
+          relationship_type: 'peer' // Default, will be updated through conversation
         })
-        .select()
-        .single();
+      });
 
-      if (personError) throw personError;
+      if (!response.ok) {
+        throw new Error('Failed to create person');
+      }
 
-      // Send initial system message to start profiling conversation
-      const initialMessage = generateInitialProfileMessage(personName);
-      
-      const { error: messageError } = await supabase
-        .from('messages')
-        .insert({
-          person_id: person.id,
-          content: initialMessage,
-          is_user: false,
-          user_id: user.id
-        });
-
-      if (messageError) throw messageError;
+      const { person } = await response.json();
 
       // Notify parent component
       onPersonAdded(person);
@@ -132,9 +121,16 @@ export default function PersonSuggestion({
 
   // Generate initial profiling message
   const generateInitialProfileMessage = (personName: string): string => {
-    return `Great! I've added ${personName} to your team. Let's set up their profile so I can provide better guidance about your interactions.
+    return `Great! I've added ${personName} to your team. Let me help you get immediate value from this profile.
 
-What's ${personName}'s role or job title?`;
+**Quick Setup (30 seconds):**
+Let's gather just enough context to make our first conversation useful.
+
+1️⃣ **Their role**: What's ${personName}'s job title?
+2️⃣ **Your relationship**: Is ${personName} your direct report, peer, manager, or other stakeholder?
+3️⃣ **Current situation**: What's the most important thing happening with ${personName} right now? (e.g., "struggling with new responsibilities", "high performer wanting growth", "difficult relationship")
+
+You can answer all three in one message - keep it brief! I'll use this to give you immediate, actionable insights.`;
   };
 
   if (detectedPeople.length === 0) return null;

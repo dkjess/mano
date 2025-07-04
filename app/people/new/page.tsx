@@ -89,7 +89,7 @@ export default function NewPersonPage() {
         // Add person to context to avoid refetching
         addPerson(data.person);
         
-        // If they provided context and want to include it, start a conversation
+        // If they provided context, send it as their first message after the welcome
         if (includeContext && formData.context.trim()) {
           await fetch('/api/chat', {
             method: 'POST',
