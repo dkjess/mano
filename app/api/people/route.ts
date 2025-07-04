@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getPeople, createPerson } from '@/lib/database';
+import { generatePersonWelcomeMessage } from '@/lib/welcome-message-generation';
 
 export async function GET(request: NextRequest) {
   try {
@@ -44,6 +45,34 @@ export async function POST(request: NextRequest) {
       role: role || null,
       relationship_type
     }, supabase);
+
+    // Generate AI-powered welcome message using full context
+    const initialMessage = await generatePersonWelcomeMessage({
+      name,
+      role,
+      relationship_type,
+      user_id: user.id
+    }, supabase);
+
+    console.log('Creating initial message for person:', person.id);
+    
+    // Insert the welcome message from Mano
+    const { data: messageData, error: messageError } = await supabase
+      .from('messages')
+      .insert({
+        person_id: person.id,
+        content: initialMessage,
+        is_user: false, // This is from Mano
+        user_id: user.id
+      })
+      .select()
+      .single();
+      
+    if (messageError) {
+      console.error('Error creating initial message:', messageError);
+    } else {
+      console.log('Initial message created:', messageData);
+    }
 
     return NextResponse.json({ person }, { status: 201 });
   } catch (error) {

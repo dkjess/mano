@@ -2,6 +2,8 @@ import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { VectorService, VectorSearchResult } from './vector-service.ts'
 import { EmbeddingJob } from './embedding-job.ts'
 import { ConversationIntelligence } from './conversation-intelligence.ts'
+import { ProactiveInsightsSystem, type ProactiveInsight } from './proactive-insights.ts'
+import { EnhancedSemanticSearch, type SemanticPattern } from './enhanced-semantic-search.ts'
 
 export interface PersonSummary {
   id: string;
@@ -43,7 +45,9 @@ export interface ManagementContext {
     similar_conversations: VectorSearchResult[];
     cross_person_insights: VectorSearchResult[];
     related_themes: any[];
+    semantic_patterns?: SemanticPattern[];
   };
+  proactive_insights?: ProactiveInsight[];
 }
 
 export class ManagementContextBuilder {
@@ -55,7 +59,7 @@ export class ManagementContextBuilder {
     this.embeddingJob = new EmbeddingJob(supabase, this.vectorService);
   }
 
-  async buildFullContext(currentPersonId: string, currentQuery?: string): Promise<{
+  async buildFullContext(currentPersonId: string, currentQuery?: string, includeProactiveInsights: boolean = false): Promise<{
     context: ManagementContext;
     enhancement?: any;
   }> {
@@ -79,6 +83,23 @@ export class ManagementContextBuilder {
         conversation_patterns: patterns,
         semantic_context: semanticContext
       };
+
+      // Generate proactive insights if requested (for general conversations or dashboard)
+      if (includeProactiveInsights && process.env.ANTHROPIC_API_KEY) {
+        try {
+          const proactiveInsights = new ProactiveInsightsSystem(
+            this.supabase,
+            this.userId,
+            process.env.ANTHROPIC_API_KEY
+          );
+          
+          context.proactive_insights = await proactiveInsights.generateProactiveInsights(context);
+          console.log(`🚀 Generated ${context.proactive_insights.length} proactive insights`);
+        } catch (insightsError) {
+          console.error('Failed to generate proactive insights:', insightsError);
+          // Continue without insights - not critical for core functionality
+        }
+      }
 
       // Generate conversational enhancement
       let enhancement;
@@ -115,13 +136,66 @@ export class ManagementContextBuilder {
 
   private async getSemanticContext(query: string, currentPersonId: string) {
     try {
+      // Use enhanced semantic search if API key is available
+      if (process.env.ANTHROPIC_API_KEY) {
+        const enhancedSearch = new EnhancedSemanticSearch(
+          this.supabase,
+          this.vectorService,
+          this.userId,
+          process.env.ANTHROPIC_API_KEY
+        );
+
+        // Perform enhanced search
+        const enhancedResults = await enhancedSearch.enhancedSearch({
+          query,
+          person_id: currentPersonId !== 'general' ? currentPersonId : undefined,
+          intent: 'find_similar',
+          additional_context: ['management', 'leadership', 'team dynamics']
+        });
+
+        // Detect semantic patterns
+        const semanticPatterns = await enhancedSearch.detectSemanticPatterns(
+          enhancedResults,
+          { query, person_id: currentPersonId, intent: 'find_patterns' }
+        );
+
+        // Transform enhanced results back to expected format
+        const similarConversations = enhancedResults
+          .slice(0, 5)
+          .map(result => ({
+            ...result.original_result,
+            similarity: result.relevance_score
+          }));
+
+        // Get cross-person insights
+        const crossPersonResults = await enhancedSearch.enhancedSearch({
+          query,
+          intent: 'find_related_people',
+          additional_context: ['team collaboration', 'similar challenges']
+        });
+
+        const crossPersonInsights = crossPersonResults
+          .filter(result => result.original_result.person_id !== currentPersonId)
+          .slice(0, 3)
+          .map(result => result.original_result);
+
+        console.log(`🔍 Enhanced semantic search: ${similarConversations.length} similar, ${crossPersonInsights.length} cross-person, ${semanticPatterns.length} patterns`);
+
+        return {
+          similar_conversations: similarConversations,
+          cross_person_insights: crossPersonInsights,
+          related_themes: [], // Can be enhanced later
+          semantic_patterns: semanticPatterns
+        };
+      }
+      
+      // Fallback to basic semantic context
       const context = await this.vectorService.findSemanticContext(
         this.userId,
         query,
         currentPersonId
       );
       
-      // Transform to match interface naming
       return {
         similar_conversations: context.similarConversations,
         cross_person_insights: context.crossPersonInsights,
@@ -129,7 +203,23 @@ export class ManagementContextBuilder {
       };
     } catch (error) {
       console.error('Error getting semantic context:', error);
-      return undefined;
+      // Fallback to basic context
+      try {
+        const context = await this.vectorService.findSemanticContext(
+          this.userId,
+          query,
+          currentPersonId
+        );
+        
+        return {
+          similar_conversations: context.similarConversations,
+          cross_person_insights: context.crossPersonInsights,
+          related_themes: context.relatedThemes
+        };
+      } catch (fallbackError) {
+        console.error('Fallback semantic context also failed:', fallbackError);
+        return undefined;
+      }
     }
   }
 
