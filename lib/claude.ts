@@ -1,11 +1,11 @@
-import Anthropic from '@anthropic-ai/sdk';
+// Anthropic SDK removed - all AI calls now go through Supabase Edge Functions
+// import Anthropic from '@anthropic-ai/sdk';
 import type { Message } from '@/types/database';
 import type { ManagementContextData } from './management-context';
 import { formatContextForPrompt } from './management-context';
 
-const anthropic = new Anthropic({
- apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+// Client-side Anthropic instance removed for architectural compliance
+// All AI functionality is now handled by Supabase Edge Functions
 
 export const SYSTEM_PROMPT = `You are Mano, an intelligent management assistant and helping hand for managers.
 
@@ -112,51 +112,14 @@ Previous Conversation: {conversation_history}
 
 Respond in a warm, professional tone as a trusted management coach. Keep responses focused, practical, and actionable. Address the user by their preferred name when appropriate.`;
 
+// Deprecated: Client-side Claude API calls removed for architectural compliance
+// All AI functionality now handled by Supabase Edge Functions
 async function callClaudeWithRetry(
  systemPrompt: string,
  userMessage: string,
  maxRetries: number = 2
 ): Promise<string> {
- for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-   try {
-     const response = await anthropic.messages.create({
-       model: 'claude-sonnet-4-20250514',
-       max_tokens: 1024,
-       system: systemPrompt,
-       messages: [
-         {
-           role: 'user',
-           content: userMessage
-         }
-       ]
-     });
-
-     const textContent = response.content.find(block => block.type === 'text');
-     return textContent?.text || 'Sorry, I had trouble generating a response.';
-
-   } catch (error: any) {
-     console.error(`Claude API attempt ${attempt} failed:`, error);
-     
-     // If this is the last attempt, throw the error
-     if (attempt === maxRetries + 1) {
-       // Return different messages based on error type
-       if (error.status === 429) {
-         throw new Error('RATE_LIMIT');
-       } else if (error.status >= 500) {
-         throw new Error('SERVER_ERROR');
-       } else if (error.status === 401) {
-         throw new Error('AUTH_ERROR');
-       } else {
-         throw new Error('UNKNOWN_ERROR');
-       }
-     }
-     
-     // Wait before retrying (exponential backoff)
-     await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-   }
- }
- 
- throw new Error('UNKNOWN_ERROR');
+ throw new Error('callClaudeWithRetry is deprecated. Use Supabase Edge Functions instead.');
 }
 
 interface UserProfile {
@@ -182,6 +145,7 @@ function formatUserContext(profile?: UserProfile): string {
  return parts.length > 0 ? parts.join(', ') + '.' : '';
 }
 
+// Deprecated: Client-side AI function removed for architectural compliance
 export async function getChatCompletion(
  userMessage: string,
  personName: string,
@@ -191,37 +155,10 @@ export async function getChatCompletion(
  managementContext?: ManagementContextData,
  userProfile?: UserProfile
 ): Promise<string> {
- // Format conversation history
- const historyText = conversationHistory
-   .slice(-10) // Only use last 10 messages for context
-   .map(msg => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
-   .join('\n');
-
- // Format management context if available
- const contextText = managementContext ? formatContextForPrompt(managementContext) : '';
-
- let systemPrompt: string;
- 
- // Use different system prompt for general assistant
- if (personName === 'General') {
-   const userContextText = formatUserContext(userProfile);
-   systemPrompt = GENERAL_SYSTEM_PROMPT
-     .replace('{user_context}', userContextText || 'No user profile information available.')
-     .replace('{management_context}', contextText || 'No additional team context available.')
-     .replace('{conversation_history}', historyText || 'No previous conversation');
- } else {
-   // Replace placeholders in person-specific system prompt
-   systemPrompt = SYSTEM_PROMPT
-     .replace('{name}', personName)
-     .replace('{role}', personRole || 'No specific role')
-     .replace('{relationship_type}', relationshipType)
-     .replace('{management_context}', contextText || 'No additional team context available.')
-     .replace('{conversation_history}', historyText || 'No previous conversation');
- }
-
- return await callClaudeWithRetry(systemPrompt, userMessage);
+ throw new Error('getChatCompletion is deprecated. Use Supabase Edge Functions instead.');
 }
 
+// Deprecated: Client-side AI streaming function removed for architectural compliance
 export async function getChatCompletionStreaming(
  userMessage: string,
  personName: string,
@@ -231,41 +168,5 @@ export async function getChatCompletionStreaming(
  managementContext?: ManagementContextData,
  userProfile?: UserProfile
 ) {
- const historyText = conversationHistory
-   .slice(-10)
-   .map(msg => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
-   .join('\n');
-
- // Format management context if available
- const contextText = managementContext ? formatContextForPrompt(managementContext) : '';
-
- let systemPrompt: string;
- 
- // Use different system prompt for general assistant
- if (personName === 'General') {
-   const userContextText = formatUserContext(userProfile);
-   systemPrompt = GENERAL_SYSTEM_PROMPT
-     .replace('{user_context}', userContextText || 'No user profile information available.')
-     .replace('{management_context}', contextText || 'No additional team context available.')
-     .replace('{conversation_history}', historyText || 'No previous conversation');
- } else {
-   systemPrompt = SYSTEM_PROMPT
-     .replace('{name}', personName)
-     .replace('{role}', personRole || 'No specific role')
-     .replace('{relationship_type}', relationshipType)
-     .replace('{management_context}', contextText || 'No additional team context available.')
-     .replace('{conversation_history}', historyText || 'No previous conversation');
- }
-
- return anthropic.messages.stream({
-   model: 'claude-sonnet-4-20250514',
-   max_tokens: 1024,
-   system: systemPrompt,
-   messages: [
-     {
-       role: 'user',
-       content: userMessage
-     }
-   ]
- });
+ throw new Error('getChatCompletionStreaming is deprecated. Use Supabase Edge Functions instead.');
 }

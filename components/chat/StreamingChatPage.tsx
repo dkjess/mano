@@ -47,7 +47,7 @@ export function StreamingChatPage({
         const streamingId = startStreamingMessage(loadingId);
         
         await startStreaming(streamingId, async () => {
-          // Use real API streaming
+          // Use Supabase Edge Function streaming
           return await streamChatResponse(content, personId);
         });
       }, 800); // Short delay for Mano to "think"

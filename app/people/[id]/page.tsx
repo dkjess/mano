@@ -275,10 +275,25 @@ export default function PersonDetailPage() {
         
         console.log('🔍 DEBUG: Sending streaming request:', requestPayload);
         
-        const response = await fetch('/api/chat/stream', {
+        // Get Supabase session for authentication
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.access_token) {
+          throw new Error('No authenticated session found');
+        }
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/chat`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestPayload)
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          },
+          body: JSON.stringify({
+            action: 'streaming_chat',
+            ...requestPayload
+          })
         });
 
       if (!response.ok) {

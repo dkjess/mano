@@ -29,6 +29,16 @@ interface ChatRequest {
   message: string;
 }
 
+interface StreamingChatRequest {
+  action: 'streaming_chat';
+  person_id: string;
+  message: string;
+  topicId?: string;
+  hasFiles?: boolean;
+  isTopicConversation?: boolean;
+  topicTitle?: string;
+}
+
 interface PersonWelcomeRequest {
   action: 'generate_person_welcome';
   name: string;
@@ -321,6 +331,436 @@ async function updatePersonProfile(
   return data;
 }
 
+// Handle streaming chat functionality
+async function handleStreamingChat({
+  supabase,
+  anthropic,
+  user,
+  person_id,
+  userMessage,
+  topicId,
+  hasFiles,
+  isTopicConversation,
+  topicTitle
+}: {
+  supabase: any,
+  anthropic: any,
+  user: any,
+  person_id: string,
+  userMessage: string,
+  topicId?: string,
+  hasFiles?: boolean,
+  isTopicConversation?: boolean,
+  topicTitle?: string
+}) {
+  try {
+    console.log('🔍 Streaming chat request:', {
+      person_id,
+      userMessage: userMessage.substring(0, 100) + (userMessage.length > 100 ? '...' : ''),
+      topicId,
+      hasFiles,
+      isTopicConversation,
+      topicTitle
+    });
+
+    // Get user profile
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('call_name, job_role, company')
+      .eq('user_id', user.id)
+      .single()
+
+    // Handle special case for 'general' assistant - now topic-based
+    let person: Person
+    let actualTopicId = topicId
+    
+    if (person_id === 'general') {
+      // Get or create the General topic
+      try {
+        const { data: generalTopic } = await supabase
+          .from('topics')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('title', 'General')
+          .single()
+
+        if (generalTopic) {
+          actualTopicId = generalTopic.id
+        } else {
+          // Create General topic if it doesn't exist
+          const { data: newTopic } = await supabase
+            .from('topics')
+            .insert({
+              user_id: user.id,
+              title: 'General',
+              description: 'General management discussions and strategic thinking'
+            })
+            .select()
+            .single()
+          
+          actualTopicId = newTopic?.id
+        }
+        
+        isTopicConversation = true
+        topicTitle = 'General'
+      } catch (error) {
+        console.error('Error getting General topic:', error)
+      }
+      
+      person = {
+        id: 'general',
+        user_id: '',
+        name: 'General',
+        role: 'Management Assistant',
+        relationship_type: 'assistant',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+    } else {
+      // Get person details
+      const { data: personData, error: personError } = await supabase
+        .from('people')
+        .select('*')
+        .eq('id', person_id)
+        .eq('user_id', user.id)
+        .single()
+
+      if (personError || !personData) {
+        return new Response(JSON.stringify({ error: 'Person not found' }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      
+      person = personData
+    }
+
+    // Get conversation history (from topic if applicable, otherwise from person)
+    let conversationHistory
+    if (isTopicConversation && actualTopicId) {
+      // For topic conversations, get messages from the topic
+      const { data: topicMessages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('topic_id', actualTopicId)
+        .order('created_at', { ascending: true })
+      conversationHistory = topicMessages || []
+    } else {
+      conversationHistory = await getMessages(person_id, supabase)
+    }
+
+    // Build enhanced management context with vector search
+    let managementContext
+    try {
+      const contextBuilder = new ManagementContextBuilder(supabase, user.id)
+      const { context } = await contextBuilder.buildFullContext(
+        person_id, 
+        userMessage,
+        isTopicConversation,
+        actualTopicId
+      )
+      
+      // Convert to expected format for prompt building
+      managementContext = {
+        people: context.people,
+        team_size: context.team_size,
+        recent_themes: context.recent_themes,
+        current_challenges: context.current_challenges,
+        conversation_patterns: context.conversation_patterns,
+        semantic_context: context.semantic_context
+      }
+    } catch (contextError) {
+      console.warn('Failed to gather enhanced management context:', contextError)
+      managementContext = undefined
+    }
+
+    // Create user message record
+    let userMessageRecord
+    if (isTopicConversation && actualTopicId) {
+      // For topic conversations
+      const { data: message, error } = await supabase
+        .from('messages')
+        .insert({
+          content: userMessage,
+          topic_id: actualTopicId,
+          person_id: null,
+          is_user: true,
+          user_id: user.id
+        })
+        .select()
+        .single()
+      
+      if (error) throw error
+      userMessageRecord = message
+    } else {
+      // For person conversations
+      const { data: message, error } = await supabase
+        .from('messages')
+        .insert({
+          content: userMessage,
+          person_id: person_id,
+          topic_id: null,
+          is_user: true,
+          user_id: user.id
+        })
+        .select()
+        .single()
+      
+      if (error) throw error
+      userMessageRecord = message
+    }
+
+    // Build system prompt and context
+    const contextualName = isTopicConversation ? topicTitle : person.name
+    const contextualRole = isTopicConversation ? 'Management Coach for Topic Discussion' : person.role
+    
+    // Use the same prompt engineering approach as the client-side implementation
+    const systemPrompt = buildSystemPrompt(
+      contextualName,
+      contextualRole,
+      person.relationship_type,
+      conversationHistory,
+      managementContext,
+      userProfile
+    )
+
+    // Format conversation history
+    const historyText = conversationHistory
+      .slice(-10)
+      .map((msg: any) => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
+      .join('\n')
+
+    // Create a ReadableStream for streaming response
+    const readableStream = new ReadableStream({
+      async start(controller) {
+        let fullResponse = ''
+        const encoder = new TextEncoder()
+        
+        // Send initial message ID
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+          type: 'start', 
+          userMessageId: userMessageRecord.id 
+        })}\n\n`))
+
+        try {
+          // Create streaming request to Anthropic
+          const stream = await anthropic.messages.create({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 4000,
+            system: systemPrompt,
+            messages: [
+              {
+                role: 'user',
+                content: userMessage
+              }
+            ],
+            stream: true
+          })
+
+          // Process streaming response
+          for await (const chunk of stream) {
+            if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+              const text = chunk.delta.text
+              fullResponse += text
+              
+              // Send the text chunk to the client
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+                type: 'delta', 
+                text 
+              })}\n\n`))
+            }
+          }
+
+          // Save the complete response to database
+          let assistantMessage
+          if (isTopicConversation && actualTopicId) {
+            // For topic conversations, save to topic messages
+            const { data: message, error } = await supabase
+              .from('messages')
+              .insert({
+                content: fullResponse,
+                topic_id: actualTopicId,
+                person_id: null,
+                is_user: false,
+                user_id: user.id
+              })
+              .select()
+              .single()
+            
+            if (error) throw error
+            assistantMessage = message
+          } else {
+            const { data: message, error } = await supabase
+              .from('messages')
+              .insert({
+                content: fullResponse,
+                person_id: person_id,
+                topic_id: null,
+                is_user: false,
+                user_id: user.id
+              })
+              .select()
+              .single()
+            
+            if (error) throw error
+            assistantMessage = message
+          }
+
+          // Send completion message
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+            type: 'complete', 
+            assistantMessageId: assistantMessage.id,
+            fullResponse 
+          })}\n\n`))
+
+        } catch (error: any) {
+          console.error('Streaming chat error:', error)
+          
+          // Create error message
+          const errorMessage = getErrorMessage(error)
+
+          // Save error message
+          let errorMessageRecord
+          if (isTopicConversation && actualTopicId) {
+            const { data: message } = await supabase
+              .from('messages')
+              .insert({
+                content: errorMessage,
+                topic_id: actualTopicId,
+                person_id: null,
+                is_user: false,
+                user_id: user.id
+              })
+              .select()
+              .single()
+            
+            errorMessageRecord = message
+          } else {
+            const { data: message } = await supabase
+              .from('messages')
+              .insert({
+                content: errorMessage,
+                person_id: person_id,
+                topic_id: null,
+                is_user: false,
+                user_id: user.id
+              })
+              .select()
+              .single()
+            
+            errorMessageRecord = message
+          }
+
+          // Send error to client
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+            type: 'error', 
+            error: errorMessage,
+            assistantMessageId: errorMessageRecord?.id,
+            shouldRetry: !error.message?.includes('AUTH')
+          })}\n\n`))
+        }
+
+        controller.close()
+      }
+    })
+
+    return new Response(readableStream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        ...corsHeaders
+      },
+    })
+
+  } catch (error) {
+    console.error('Error in streaming chat:', error)
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+}
+
+// Helper function to build system prompt (simplified from client-side)
+function buildSystemPrompt(
+  personName: string,
+  personRole: string | null,
+  relationshipType: string,
+  conversationHistory: any[],
+  managementContext: any,
+  userProfile: any
+): string {
+  // Use the appropriate system prompt based on context
+  if (personName === 'General') {
+    return buildGeneralSystemPrompt(managementContext, conversationHistory, userProfile)
+  } else {
+    return buildPersonSystemPrompt(personName, personRole, relationshipType, conversationHistory, managementContext, userProfile)
+  }
+}
+
+function buildPersonSystemPrompt(
+  personName: string,
+  personRole: string | null,
+  relationshipType: string,
+  conversationHistory: any[],
+  managementContext: any,
+  userProfile: any
+): string {
+  const contextText = managementContext ? formatContextForPrompt(managementContext) : ''
+  const historyText = conversationHistory
+    .slice(-10)
+    .map((msg: any) => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
+    .join('\n')
+  
+  const userContext = userProfile?.call_name ? 
+    `You are speaking with ${userProfile.call_name}${userProfile.job_role ? `, ${userProfile.job_role}` : ''}${userProfile.company ? ` at ${userProfile.company}` : ''}.` : 
+    'You are speaking with a manager.'
+
+  return SYSTEM_PROMPT
+    .replace('{name}', personName)
+    .replace('{role}', personRole || 'Team member')
+    .replace('{relationship_type}', relationshipType)
+    .replace('{management_context}', contextText)
+    .replace('{conversation_history}', historyText)
+    .replace('{user_context}', userContext)
+}
+
+function buildGeneralSystemPrompt(
+  managementContext: any,
+  conversationHistory: any[],
+  userProfile: any
+): string {
+  const contextText = managementContext ? formatContextForPrompt(managementContext) : ''
+  const historyText = conversationHistory
+    .slice(-10)
+    .map((msg: any) => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
+    .join('\n')
+  
+  const userContext = userProfile?.call_name ? 
+    `You are speaking with ${userProfile.call_name}${userProfile.job_role ? `, ${userProfile.job_role}` : ''}${userProfile.company ? ` at ${userProfile.company}` : ''}.` : 
+    'You are speaking with a manager.'
+
+  return GENERAL_SYSTEM_PROMPT
+    .replace('{management_context}', contextText)
+    .replace('{conversation_history}', historyText)
+    .replace('{user_context}', userContext)
+}
+
+// Helper function to format error messages
+function getErrorMessage(error: any): string {
+  switch (error.message) {
+    case 'RATE_LIMIT':
+      return "🤚 I'm getting too many requests right now. Let's try again in a moment!"
+    case 'SERVER_ERROR':
+      return "🤷 I'm having some technical difficulties. Mind trying that again?"
+    case 'AUTH_ERROR':
+      return "🔑 There's an authentication issue with my AI service. Please contact support."
+    default:
+      return "🤔 Something went wrong on my end. Would you like to try sending that message again?"
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -431,10 +871,6 @@ Create a contextual, personalized message (100-150 words) that:
 Use 🤲 once naturally. Generate only the message content - make it feel like intelligent, contextual advice tailored to their specific situation.`
 
         console.log('🤖 Generating AI welcome message for:', name)
-        console.log('🤖 ANTHROPIC_API_KEY available:', !!Deno.env.get('ANTHROPIC_API_KEY'))
-        console.log('🤖 ANTHROPIC_API_KEY length:', Deno.env.get('ANTHROPIC_API_KEY')?.length || 0)
-        console.log('🤖 ANTHROPIC_API_KEY starts with:', Deno.env.get('ANTHROPIC_API_KEY')?.substring(0, 10) || 'null')
-        console.log('🤖 All environment variables available:', Object.keys(Deno.env.toObject()).sort())
         
         // Robust AI generation with retry logic - NO hardcoded fallbacks
         let welcomeMessage = ''
@@ -619,6 +1055,37 @@ Use 🤲 once naturally. Generate only the message content - make it feel like i
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
+    }
+
+    // Handle streaming chat requests
+    if (requestBody.action === 'streaming_chat') {
+      const { 
+        person_id, 
+        message: userMessage, 
+        topicId, 
+        hasFiles, 
+        isTopicConversation, 
+        topicTitle 
+      }: StreamingChatRequest = requestBody
+
+      if (!person_id || !userMessage) {
+        return new Response(JSON.stringify({ error: 'person_id and message are required' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      return await handleStreamingChat({
+        supabase,
+        anthropic,
+        user,
+        person_id,
+        userMessage,
+        topicId,
+        hasFiles,
+        isTopicConversation,
+        topicTitle
+      })
     }
 
     // Handle regular chat requests

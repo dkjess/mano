@@ -1,29 +1,54 @@
+import { createClient } from '@/lib/supabase/client'
+
 export async function streamChatResponse(
   message: string, 
   personId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: {
+    topicId?: string;
+    hasFiles?: boolean;
+    isTopicConversation?: boolean;
+    topicTitle?: string;
+  }
 ): Promise<ReadableStream<Uint8Array>> {
-  const response = await fetch('/api/chat/stream', {
+  const supabase = createClient()
+  
+  // Get the current session for authentication
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (!session?.access_token) {
+    throw new Error('No authenticated session found')
+  }
+
+  // Make direct fetch call to Supabase Edge Function for streaming
+  const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     },
     body: JSON.stringify({
-      message,
+      action: 'streaming_chat',
       person_id: personId,
+      message,
+      topicId: options?.topicId,
+      hasFiles: options?.hasFiles,
+      isTopicConversation: options?.isTopicConversation,
+      topicTitle: options?.topicTitle
     }),
     signal,
-  });
+  })
 
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    throw new Error(`HTTP error! status: ${response.status}`)
   }
 
   if (!response.body) {
-    throw new Error('No response body');
+    throw new Error('No response body')
   }
 
-  return response.body;
+  return response.body
 }
 
 // Helper function to parse Server-Sent Events

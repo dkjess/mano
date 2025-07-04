@@ -148,10 +148,24 @@ export default function TopicPage() {
       console.log('Starting AI streaming response...');
       const assistantMessageId = `assistant-${Date.now()}`;
       await startStreaming(assistantMessageId, async () => {
-        const response = await fetch('/api/chat/stream', {
+        // Get Supabase session for authentication
+        const { createClient } = await import('@/lib/supabase/client');
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.access_token) {
+          throw new Error('No authenticated session found');
+        }
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/chat`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          },
           body: JSON.stringify({
+            action: 'streaming_chat',
             message: content.trim(),
             person_id: 'general', // Use general for topic conversations
             isTopicConversation: true,
