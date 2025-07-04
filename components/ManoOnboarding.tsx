@@ -127,20 +127,32 @@ export function ManoOnboarding({ isOpen, onClose, flowType }: ManoOnboardingProp
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No authenticated user')
 
-      const newPerson: Omit<Person, 'id' | 'created_at' | 'updated_at'> = {
-        user_id: user.id,
+      console.log('🔵 ManoOnboarding: Creating person via API:', {
         name: personData.name.trim(),
         role: personData.role.trim(),
         relationship_type: personData.relationshipType
+      })
+
+      // Use the API route to ensure AI welcome message generation
+      const response = await fetch('/api/people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: personData.name.trim(),
+          role: personData.role.trim() || null,
+          relationship_type: personData.relationshipType
+        })
+      })
+
+      console.log('🔵 ManoOnboarding: API response status:', response.status)
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create person')
       }
 
-      const { data: person, error: createError } = await supabase
-        .from('people')
-        .insert(newPerson)
-        .select()
-        .single()
-
-      if (createError) throw createError
+      const { person } = await response.json()
+      console.log('🔵 ManoOnboarding: Person created successfully:', person)
 
       addPerson(person)
       onClose()

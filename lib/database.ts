@@ -54,10 +54,15 @@ export async function deletePerson(id: string, supabase: SupabaseClient): Promis
 
 // Message operations
 export async function getMessages(personId: string, supabase: SupabaseClient): Promise<Message[]> {
+  // Get current user to filter messages by user_id for security
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
   const { data, error } = await supabase
     .from('messages')
     .select('*')
     .eq('person_id', personId)
+    .eq('user_id', user.id) // Critical: filter by user_id for security and correctness
     .order('created_at', { ascending: true });
 
   if (error) throw error;

@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest } from 'next/server';
-import { generateTopicWelcomeMessage } from '@/lib/welcome-message-generation';
 
 export async function GET() {
   try {
@@ -62,31 +61,51 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    // Generate AI-powered welcome message for the new topic
-    const welcomeMessage = await generateTopicWelcomeMessage({
-      title: title.trim(),
-      participants,
-      user_id: user.id
-    }, supabase);
-
-    console.log('Creating initial message for topic:', topic.id);
-    
-    // Insert the welcome message from Mano
-    const { data: messageData, error: messageError } = await supabase
-      .from('messages')
-      .insert({
-        topic_id: topic.id,
-        content: welcomeMessage,
-        is_user: false, // This is from Mano
-        user_id: user.id
-      })
-      .select()
-      .single();
+    // Generate AI-powered welcome message using Supabase Edge Function (server-side)
+    try {
+      console.log('🟢 Calling Supabase Edge Function for topic welcome message generation');
       
-    if (messageError) {
-      console.error('Error creating initial topic message:', messageError);
-    } else {
-      console.log('Initial topic message created:', messageData);
+      const { data: welcomeData, error: welcomeError } = await supabase.functions.invoke('chat', {
+        body: {
+          action: 'generate_topic_welcome',
+          title: title.trim(),
+          participants
+        }
+      });
+
+      if (welcomeError) {
+        console.error('Supabase function returned error:', welcomeError);
+        throw welcomeError;
+      }
+
+      const initialMessage = welcomeData?.welcomeMessage;
+      if (initialMessage) {
+        console.log('🟢 AI-generated topic welcome message:', initialMessage);
+        console.log('🟢 Creating initial message for topic:', topic.id);
+        
+        // Insert the welcome message from Mano
+        const { data: messageData, error: messageError } = await supabase
+          .from('messages')
+          .insert({
+            topic_id: topic.id,
+            content: initialMessage,
+            is_user: false, // This is from Mano
+            user_id: user.id
+          })
+          .select()
+          .single();
+          
+        if (messageError) {
+          console.error('Error creating initial topic message:', messageError);
+        } else {
+          console.log('Initial topic message created successfully:', messageData);
+        }
+      }
+    } catch (welcomeError) {
+      console.error('Failed to generate AI topic welcome message:', welcomeError);
+      // Graceful degradation: Topic creation succeeds, but without welcome message
+      // User will see an empty conversation initially - AI will generate contextual responses when they start chatting
+      console.log('🔄 Topic created successfully, but without AI welcome message. Conversation will be AI-generated when user starts chatting.');
     }
 
     return Response.json({ topic });

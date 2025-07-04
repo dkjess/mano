@@ -21,8 +21,8 @@ interface UseMessagesResult {
 const messagesCache = new Map<string, MessageCache>();
 const pendingRequests = new Map<string, Promise<Message[]>>();
 
-// Cache duration: 1 minute for messages (they change more frequently)
-const CACHE_DURATION = 60 * 1000;
+// Cache duration: 5 seconds for messages during development (they change more frequently)
+const CACHE_DURATION = 5 * 1000;
 
 export function useMessages(personId: string | null): UseMessagesResult {
   const [messages, setMessages] = useState<Message[]>([]);

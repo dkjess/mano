@@ -89,6 +89,7 @@ export default function PersonSuggestion({
       }
 
       // Create the person through the API to ensure server-side logic runs
+      console.log('🟣 PersonSuggestion: Creating person via API:', personName);
       const response = await fetch('/api/people', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -98,6 +99,7 @@ export default function PersonSuggestion({
           relationship_type: 'peer' // Default, will be updated through conversation
         })
       });
+      console.log('🟣 PersonSuggestion: API response status:', response.status);
 
       if (!response.ok) {
         throw new Error('Failed to create person');

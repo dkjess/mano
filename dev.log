@@ -1,0 +1,82 @@
+
+> mano@1.0.0 dev /Users/jess/code/mano
+> next dev --turbopack
+
+   ▲ Next.js 15.3.3 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.68.111:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Compiled middleware in 140ms
+ ✓ Ready in 940ms
+ ○ Compiling /people/[id] ...
+ ✓ Compiled /people/[id] in 1434ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /people/6f736b2c-70b1-47ce-8f38-5e3421f0dcd0. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /people/6f736b2c-70b1-47ce-8f38-5e3421f0dcd0 200 in 1858ms
+ ○ Compiling /api/topics ...
+ GET /api/topics 200 in 1218ms
+ GET /api/people 200 in 1239ms
+ GET /api/messages?person_id=6f736b2c-70b1-47ce-8f38-5e3421f0dcd0 200 in 1246ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /people. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /people 200 in 1366ms
+ GET / 200 in 1367ms
+ GET /api/messages?person_id=6f736b2c-70b1-47ce-8f38-5e3421f0dcd0 200 in 93ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /auth/login. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /auth/login 200 in 1633ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /protected. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /protected 200 in 1911ms
+ ✓ Compiled /api/topics in 1912ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /static/css/main.css. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /static/css/main.css 404 in 558ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /static/js/bundle.js. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /people/fa13a77b-0ddd-43e3-a28d-29e9e365b465. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /people/fa13a77b-0ddd-43e3-a28d-29e9e365b465 200 in 54ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /auth/login. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /api/messages?person_id=fa13a77b-0ddd-43e3-a28d-29e9e365b465 200 in 52ms
+ GET /auth/login 200 in 68ms
+ GET /api/messages?person_id=fa13a77b-0ddd-43e3-a28d-29e9e365b465 200 in 19ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /people/fa13a77b-0ddd-43e3-a28d-29e9e365b465. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /people/fa13a77b-0ddd-43e3-a28d-29e9e365b465 200 in 106ms
+ GET /api/people 200 in 188ms
+ GET /api/messages?person_id=fa13a77b-0ddd-43e3-a28d-29e9e365b465 200 in 194ms
+ GET /api/topics 200 in 150ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /people. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /protected. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET / 200 in 300ms
+ GET /people 200 in 339ms
+ GET /protected 200 in 365ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /auth/login. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /api/messages?person_id=fa13a77b-0ddd-43e3-a28d-29e9e365b465 200 in 294ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /static/js/bundle.js. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /static/js/bundle.js 404 in 100ms
+ GET /auth/login 200 in 319ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /static/css/main.css. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /people/c6994a18-fcda-4a61-bc4f-b7ab45d4e09c. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /people/c6994a18-fcda-4a61-bc4f-b7ab45d4e09c 200 in 35ms
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /auth/login. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /auth/login 200 in 39ms
+ GET /api/messages?person_id=c6994a18-fcda-4a61-bc4f-b7ab45d4e09c 200 in 44ms
+ GET /api/messages?person_id=c6994a18-fcda-4a61-bc4f-b7ab45d4e09c 200 in 19ms
+ ✓ Compiled in 79ms
+[?25h
