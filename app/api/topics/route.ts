@@ -63,30 +63,60 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     // Generate AI-powered welcome message for the new topic
-    const welcomeMessage = await generateTopicWelcomeMessage({
-      title: title.trim(),
-      participants,
-      user_id: user.id
-    }, supabase);
-
-    console.log('Creating initial message for topic:', topic.id);
-    
-    // Insert the welcome message from Mano
-    const { data: messageData, error: messageError } = await supabase
-      .from('messages')
-      .insert({
-        topic_id: topic.id,
-        content: welcomeMessage,
-        is_user: false, // This is from Mano
+    try {
+      const welcomeMessage = await generateTopicWelcomeMessage({
+        title: title.trim(),
+        participants,
         user_id: user.id
-      })
-      .select()
-      .single();
+      }, supabase);
+
+      console.log('AI-generated topic welcome message:', welcomeMessage);
+      console.log('Creating initial message for topic:', topic.id);
       
-    if (messageError) {
-      console.error('Error creating initial topic message:', messageError);
-    } else {
-      console.log('Initial topic message created:', messageData);
+      // Insert the welcome message from Mano
+      const { data: messageData, error: messageError } = await supabase
+        .from('messages')
+        .insert({
+          topic_id: topic.id,
+          content: welcomeMessage,
+          is_user: false, // This is from Mano
+          user_id: user.id
+        })
+        .select()
+        .single();
+        
+      if (messageError) {
+        console.error('Error creating initial topic message:', messageError);
+      } else {
+        console.log('Initial topic message created successfully:', messageData);
+      }
+    } catch (welcomeError) {
+      console.error('Failed to generate AI topic welcome message:', welcomeError);
+      
+      // Fallback to a simple welcome message so topic creation still succeeds
+      const fallbackMessage = `Welcome to your discussion about "${title.trim()}"! I'm here to help you navigate this topic effectively. What would you like to explore or discuss?`;
+      
+      try {
+        const { data: messageData, error: messageError } = await supabase
+          .from('messages')
+          .insert({
+            topic_id: topic.id,
+            content: fallbackMessage,
+            is_user: false,
+            user_id: user.id
+          })
+          .select()
+          .single();
+          
+        if (messageError) {
+          console.error('Error creating fallback topic message:', messageError);
+        } else {
+          console.log('Fallback topic message created:', messageData);
+        }
+      } catch (fallbackError) {
+        console.error('Failed to create fallback topic message:', fallbackError);
+        // Continue anyway - topic creation should still succeed
+      }
     }
 
     return Response.json({ topic });

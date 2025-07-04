@@ -28,6 +28,10 @@ export async function generatePersonWelcomeMessage(
   supabase: SupabaseClient
 ): Promise<string> {
   try {
+    console.log('🤖 Starting AI welcome message generation for:', params.name);
+    console.log('🤖 User ID:', params.user_id);
+    console.log('🤖 ANTHROPIC_API_KEY available:', !!process.env.ANTHROPIC_API_KEY);
+    
     // Gather full management context for intelligent message generation
     const managementContext = await gatherManagementContext(
       params.user_id,
@@ -36,6 +40,8 @@ export async function generatePersonWelcomeMessage(
       undefined,
       false
     );
+    
+    console.log('🤖 Management context gathered successfully');
 
     const roleDescription = params.role ? `${params.role}` : 'team member';
     const teamSize = managementContext.teamContext.totalPeople;
@@ -73,6 +79,7 @@ Keep the tone conversational, supportive, and immediately actionable. Use the ha
 
 Generate only the message content, no additional formatting or labels.`;
 
+    console.log('🤖 Calling Anthropic API...');
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 300,
@@ -85,8 +92,12 @@ Generate only the message content, no additional formatting or labels.`;
       ]
     });
 
+    console.log('🤖 Anthropic API call successful');
     const textContent = response.content.find(block => block.type === 'text');
-    return textContent?.text || `Welcome ${params.name} to your team! Let's start building a great working relationship. What's the most important thing happening with ${params.name} right now?`;
+    const welcomeMessage = textContent?.text || `Welcome ${params.name} to your team! Let's start building a great working relationship. What's the most important thing happening with ${params.name} right now?`;
+    
+    console.log('🤖 Generated welcome message:', welcomeMessage.substring(0, 100) + '...');
+    return welcomeMessage;
 
   } catch (error) {
     console.error('Error generating person welcome message:', error);
