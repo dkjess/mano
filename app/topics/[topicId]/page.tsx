@@ -69,9 +69,18 @@ export default function TopicPage() {
   // Handle streaming completion
   useEffect(() => {
     if (streamingMessage?.isComplete && !streamingMessage.isStreaming) {
+      console.log('🔄 TOPIC COMPLETION DEBUG: Streaming completed, refreshing messages...');
+      console.log('🔄 TOPIC COMPLETION DEBUG: Streaming message content length:', streamingMessage.content.length);
+      
       // The streaming API now handles saving messages, so we just need to refresh
-      refreshMessages();
-      clearStreamingMessage();
+      refreshMessages().then(() => {
+        console.log('✅ TOPIC COMPLETION DEBUG: Messages refreshed, clearing streaming message');
+        clearStreamingMessage();
+      }).catch((error) => {
+        console.error('❌ TOPIC COMPLETION DEBUG: Error refreshing messages:', error);
+        // Still clear the streaming message even if refresh fails
+        clearStreamingMessage();
+      });
     }
   }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, clearStreamingMessage, refreshMessages]);
 
@@ -167,7 +176,7 @@ export default function TopicPage() {
           body: JSON.stringify({
             action: 'streaming_chat',
             message: content.trim(),
-            person_id: 'general', // Use general for topic conversations
+            person_id: null, // No person for topic conversations
             isTopicConversation: true,
             topicTitle: topic?.title,
             topicId: topicId,

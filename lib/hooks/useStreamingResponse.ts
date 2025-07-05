@@ -73,6 +73,7 @@ export function useStreamingResponse() {
               clearInterval(streamIntervalRef.current);
               streamIntervalRef.current = null;
             }
+            console.log('🏁 CLIENT DEBUG: Setting streaming complete. Final content length:', fullBuffer.length);
             setStreamingMessage(prev => prev ? {
               ...prev,
               isComplete: true,
@@ -105,14 +106,26 @@ export function useStreamingResponse() {
               try {
                 const parsed = JSON.parse(data);
                 
-                if (parsed.type === 'delta' && parsed.text) {
-                  // Add new text to buffer
-                  fullBuffer += parsed.text;
+                // DEBUG: Log all parsed messages
+                console.log('🔍 CLIENT DEBUG: Received message:', parsed);
+                
+                if ((parsed.type === 'delta' && parsed.text) || (parsed.type === 'content' && parsed.content)) {
+                  // Add new text to buffer (support both old and new formats)
+                  const newText = parsed.text || parsed.content;
+                  fullBuffer += newText;
+                  console.log('📝 CLIENT DEBUG: Added to buffer:', newText.length, 'chars. Total buffer:', fullBuffer.length);
                   
                   // Start typing if not already started
                   if (!typingStarted) {
+                    console.log('⌨️ CLIENT DEBUG: Starting typing effect');
                     startTyping();
                   }
+                } else if (parsed.type === 'complete') {
+                  console.log('✅ CLIENT DEBUG: Stream complete received');
+                } else if (parsed.type === 'start_playback') {
+                  console.log('🎬 CLIENT DEBUG: Playback starting');
+                } else if (parsed.type === 'start') {
+                  console.log('🚀 CLIENT DEBUG: Stream starting');
                 } else if (parsed.type === 'complete') {
                   isStreamComplete = true;
                   return;
@@ -186,6 +199,7 @@ export function useStreamingResponse() {
   }, []);
 
   const clearStreamingMessage = useCallback(() => {
+    console.log('🗑️ CLIENT DEBUG: Clearing streaming message');
     setStreamingMessage(null);
   }, []);
 

@@ -71,6 +71,7 @@ export function useMessageState() {
   }, []);
 
   const completeStreamingMessage = useCallback((messageId: string, finalContent: string) => {
+    console.log('✅ MESSAGE STATE DEBUG: Completing streaming message', messageId, 'content length:', finalContent.length);
     setMessages(prev => prev.map(msg => 
       msg.id === messageId 
         ? {

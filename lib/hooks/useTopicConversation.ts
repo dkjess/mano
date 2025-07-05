@@ -100,15 +100,28 @@ export function useTopicConversation(topicId: string): UseTopicConversationResul
   const refreshMessages = useCallback(async () => {
     if (!topicId) return;
     
+    console.log('🔄 TOPIC REFRESH DEBUG: Starting message refresh for topic:', topicId);
+    
     try {
       const response = await fetch(`/api/topics/${topicId}/messages`);
       const data = await response.json();
       
+      console.log('📨 TOPIC REFRESH DEBUG: API response:', {
+        status: response.status,
+        ok: response.ok,
+        messageCount: data.messages?.length,
+        messageIds: data.messages?.map((m: any) => m.id),
+        lastMessageContent: data.messages?.[data.messages.length - 1]?.content?.substring(0, 100)
+      });
+      
       if (response.ok) {
         setMessages(data.messages || []);
+        console.log('✅ TOPIC REFRESH DEBUG: Messages set successfully');
+      } else {
+        console.error('❌ TOPIC REFRESH DEBUG: API error:', data);
       }
     } catch (error) {
-      console.error('Failed to refresh messages:', error);
+      console.error('❌ TOPIC REFRESH DEBUG: Fetch error:', error);
     }
   }, [topicId]);
 

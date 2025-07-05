@@ -208,6 +208,8 @@ export function useMessages(personId: string | null): UseMessagesResult {
   const refresh = useCallback(async () => {
     if (!personId) return;
     
+    console.log('🔄 REFRESH DEBUG: Starting message refresh for person:', personId);
+    
     try {
       // Force a fresh fetch by clearing cache first
       const cacheKey = `messages_${personId}`;
@@ -216,10 +218,17 @@ export function useMessages(personId: string | null): UseMessagesResult {
       // Fetch fresh messages
       setIsLoading(true);
       const freshMessages = await fetchMessages(true); // Force fresh fetch
+      
+      console.log('📨 REFRESH DEBUG: Fetched messages:', {
+        count: freshMessages.length,
+        messageIds: freshMessages.map(m => m.id),
+        lastMessageContent: freshMessages[freshMessages.length - 1]?.content?.substring(0, 100)
+      });
+      
       setMessages(freshMessages);
       setError(null);
     } catch (error) {
-      console.error('Error refreshing messages:', error);
+      console.error('❌ REFRESH DEBUG: Error refreshing messages:', error);
       setError(error instanceof Error ? error.message : 'Failed to refresh messages');
     } finally {
       setIsLoading(false);

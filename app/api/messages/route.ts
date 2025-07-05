@@ -41,38 +41,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ messages: messages || [] });
     }
 
-    // Handle special case for 'general' assistant - redirect to General topic
-    if (personId === 'general') {
-      try {
-        const generalTopic = await getOrCreateGeneralTopic(user.id, supabase);
-        
-        // Get messages from the General topic
-        const { data: messages, error } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('topic_id', generalTopic.id)
-          .order('created_at', { ascending: true });
-
-        if (error) throw error;
-        
-        return NextResponse.json({ 
-          messages: messages || [],
-          redirectToTopic: generalTopic.id // Signal to client to redirect
-        });
-      } catch (error) {
-        console.error('Error handling general topic:', error);
-        // Fallback to legacy behavior for now
-        const { data, error: legacyError } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('person_id', 'general')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: true });
-
-        if (legacyError) throw legacyError;
-        return NextResponse.json({ messages: data || [] });
-      }
-    }
 
     if (!personId) {
       return NextResponse.json({ error: 'person_id or topic_id is required' }, { status: 400 });
@@ -133,42 +101,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message }, { status: 201 });
     }
 
-    // Handle special case for 'general' assistant - redirect to General topic
-    if (person_id === 'general') {
-      try {
-        const generalTopic = await getOrCreateGeneralTopic(user.id, supabase);
-        
-        const { data: message, error } = await supabase
-          .from('messages')
-          .insert({
-            content: content.trim(),
-            topic_id: generalTopic.id,
-            person_id: null,
-            is_user,
-            user_id: user.id
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        return NextResponse.json({ 
-          message,
-          redirectToTopic: generalTopic.id // Signal to client to redirect
-        }, { status: 201 });
-      } catch (error) {
-        console.error('Error handling general topic message:', error);
-        // Fallback to legacy behavior
-        const message = await createMessage({
-          person_id,
-          content,
-          is_user,
-          user_id: user.id
-        }, supabase);
-
-        return NextResponse.json({ message }, { status: 201 });
-      }
-    }
 
     if (!person_id) {
       return NextResponse.json({ error: 'person_id or topic_id is required' }, { status: 400 });

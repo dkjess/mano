@@ -316,15 +316,24 @@ async function handleStreamingChat({
   isTopicConversation?: boolean,
   topicTitle?: string
 }) {
+  console.log('🚀 STREAMING CHAT START')
+  console.log('📋 Request details:', {
+    person_id,
+    userMessage: userMessage.substring(0, 100) + (userMessage.length > 100 ? '...' : ''),
+    topicId,
+    hasFiles,
+    isTopicConversation,
+    topicTitle,
+    userId: user.id
+  });
+  
+  console.log('🔍 TOPIC DEBUG: Input parameters:', {
+    topicId: topicId || 'undefined',
+    isTopicConversation: isTopicConversation || false,
+    topicTitle: topicTitle || 'undefined'
+  });
+
   try {
-    console.log('🔍 Streaming chat request:', {
-      person_id,
-      userMessage: userMessage.substring(0, 100) + (userMessage.length > 100 ? '...' : ''),
-      topicId,
-      hasFiles,
-      isTopicConversation,
-      topicTitle
-    });
 
     // Get user profile
     const { data: userProfile } = await supabase
@@ -333,47 +342,39 @@ async function handleStreamingChat({
       .eq('user_id', user.id)
       .single()
 
-    // Handle special case for 'general' assistant - now topic-based
+    // All conversations are now UUID-based (topic or person)
     let person: Person
     let actualTopicId = topicId
     
-    if (person_id === 'general') {
-      // Get or create the General topic
+    if (isTopicConversation && topicId) {
+      // For topic conversations, get topic details
       try {
-        const { data: generalTopic } = await supabase
+        const { data: topic } = await supabase
           .from('topics')
           .select('*')
+          .eq('id', topicId)
           .eq('user_id', user.id)
-          .eq('title', 'General')
           .single()
 
-        if (generalTopic) {
-          actualTopicId = generalTopic.id
+        if (topic) {
+          actualTopicId = topic.id
+          topicTitle = topic.title
+          console.log('✅ TOPIC DEBUG: Topic found and set:', {
+            actualTopicId,
+            topicTitle: topic.title
+          });
         } else {
-          // Create General topic if it doesn't exist
-          const { data: newTopic } = await supabase
-            .from('topics')
-            .insert({
-              user_id: user.id,
-              title: 'General',
-              description: 'General management discussions and strategic thinking'
-            })
-            .select()
-            .single()
-          
-          actualTopicId = newTopic?.id
+          console.log('❌ TOPIC DEBUG: Topic not found in database');
         }
-        
-        isTopicConversation = true
-        topicTitle = 'General'
       } catch (error) {
-        console.error('Error getting General topic:', error)
+        console.error('❌ TOPIC DEBUG: Error getting topic:', error)
       }
       
+      // For topic conversations, create virtual person representing Mano
       person = {
-        id: 'general',
+        id: 'mano',
         user_id: '',
-        name: 'General',
+        name: 'Mano',
         role: 'Management Assistant',
         relationship_type: 'assistant',
         created_at: new Date().toISOString(),
@@ -506,10 +507,12 @@ async function handleStreamingChat({
         })}\n\n`))
 
         try {
-          // Create streaming request to Anthropic
-          const stream = await anthropic.messages.create({
+          console.log('🚀 Getting complete response from Anthropic (save-first approach)...')
+          
+          // Get complete response from Anthropic (NON-streaming)
+          const response = await anthropic.messages.create({
             model: 'claude-sonnet-4-20250514',
-            max_tokens: 1000,
+            max_tokens: 4000,
             system: systemPrompt,
             messages: [
               {
@@ -517,26 +520,38 @@ async function handleStreamingChat({
                 content: userMessage
               }
             ],
-            stream: true
+            stream: false  // ← Key change: get complete response first
           })
 
-          // Process streaming response
-          for await (const chunk of stream) {
-            if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-              const text = chunk.delta.text
-              fullResponse += text
-              
-              // Send the text chunk to the client
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-                type: 'delta', 
-                text 
-              })}\n\n`))
-            }
-          }
+          console.log('✅ Anthropic response received')
+          
+          // Extract the full response text
+          const textContent = response.content.find(block => block.type === 'text')
+          fullResponse = textContent?.text || "I'm having trouble generating a response. Could you try asking again?"
+          
+          console.log('📊 Full response length:', fullResponse.length)
+          console.log('📄 Response preview:', fullResponse.substring(0, 200) + (fullResponse.length > 200 ? '...' : ''))
 
           // Save the complete response to database
+          console.log('💾 Starting database save process...')
           let assistantMessage
+          
+          // Ensure we have a response to save
+          if (!fullResponse || fullResponse.trim().length === 0) {
+            console.log('⚠️ Empty response detected, using fallback message')
+            fullResponse = "I'm having trouble generating a response. Could you try asking again?"
+          } else {
+            console.log('✅ Valid response ready for save, length:', fullResponse.length)
+          }
+          
+          console.log('🔄 Preparing database insert...')
+          console.log('📍 Topic conversation:', isTopicConversation, 'Topic ID:', actualTopicId)
+          console.log('👤 Person ID:', person_id)
+          console.log('🆔 User ID:', user.id)
+          console.log('🎯 FINAL TOPIC DEBUG: About to save with topic_id:', actualTopicId)
+          
           if (isTopicConversation && actualTopicId) {
+            console.log('💬 Saving as topic message...')
             // For topic conversations, save to topic messages
             const { data: message, error } = await supabase
               .from('messages')
@@ -550,9 +565,14 @@ async function handleStreamingChat({
               .select()
               .single()
             
-            if (error) throw error
+            if (error) {
+              console.error('❌ Error saving topic message:', error)
+              throw error
+            }
+            console.log('✅ Topic message saved successfully. Message ID:', message.id)
             assistantMessage = message
           } else {
+            console.log('👤 Saving as person message...')
             const { data: message, error } = await supabase
               .from('messages')
               .insert({
@@ -565,19 +585,94 @@ async function handleStreamingChat({
               .select()
               .single()
             
-            if (error) throw error
+            if (error) {
+              console.error('❌ Error saving person message:', error)
+              throw error
+            }
+            console.log('✅ Person message saved successfully. Message ID:', message.id)
             assistantMessage = message
           }
 
-          // Send completion message
+          // CRITICAL DEBUG: Verify message was actually saved
+          console.log('🔍 CRITICAL DEBUG: Verifying message was saved in database...')
+          const { data: verifyMessage, error: verifyError } = await supabase
+            .from('messages')
+            .select('*')
+            .eq('id', assistantMessage.id)
+            .single()
+          
+          if (verifyError || !verifyMessage) {
+            console.error('❌ CRITICAL: Message not found in database after save!', verifyError)
+            throw new Error('Message save verification failed')
+          }
+          
+          console.log('✅ VERIFIED: Message exists in database:', {
+            id: verifyMessage.id,
+            content_length: verifyMessage.content?.length,
+            content_preview: verifyMessage.content?.substring(0, 100) + '...',
+            created_at: verifyMessage.created_at,
+            user_id: verifyMessage.user_id,
+            person_id: verifyMessage.person_id,
+            topic_id: verifyMessage.topic_id
+          })
+
+          // Now stream the saved response back to client for typing effect
+          console.log('🎬 Starting playback streaming for typing effect...')
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+            type: 'start_playback', 
+            assistantMessageId: assistantMessage.id,
+            debug_saved_content_length: fullResponse.length
+          })}\n\n`))
+
+          // Stream the saved response character by character
+          const words = fullResponse.split(' ')
+          console.log(`🔤 Streaming ${words.length} words...`)
+          
+          for (let i = 0; i < words.length; i++) {
+            const chunk = i === 0 ? words[i] : ' ' + words[i]
+            
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'delta',
+              text: chunk,
+              debug_word_index: i,
+              debug_total_words: words.length
+            })}\n\n`))
+            
+            // Natural typing speed (words per minute ~150-200)
+            await new Promise(resolve => setTimeout(resolve, 80 + Math.random() * 40))
+          }
+
+          // Send final completion message
+          console.log('🏁 Sending final completion message...')
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
             type: 'complete', 
             assistantMessageId: assistantMessage.id,
-            fullResponse 
+            fullResponse,
+            debug_final_verification: true
           })}\n\n`))
+          console.log('✅ Playback streaming completed successfully')
+          
+          // FINAL VERIFICATION: Check message still exists
+          console.log('🔍 FINAL DEBUG: Re-verifying message exists after streaming...')
+          const { data: finalCheck, error: finalError } = await supabase
+            .from('messages')
+            .select('id, content')
+            .eq('id', assistantMessage.id)
+            .single()
+          
+          if (finalError || !finalCheck) {
+            console.error('❌ CRITICAL: Message disappeared after streaming!', finalError)
+          } else {
+            console.log('✅ FINAL VERIFICATION: Message still exists:', finalCheck.id)
+          }
 
         } catch (error: any) {
-          console.error('Streaming chat error:', error)
+          console.error('❌ STREAMING ERROR:', error)
+          console.error('❌ Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack?.substring(0, 500)
+          })
           
           // Create error message
           const errorMessage = getErrorMessage(error)
@@ -725,6 +820,12 @@ function getErrorMessage(error: any): string {
 }
 
 serve(async (req) => {
+  console.log('🔥 EDGE FUNCTION DEBUG: Request received!', {
+    method: req.method,
+    url: req.url,
+    timestamp: new Date().toISOString()
+  });
+  
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -1031,8 +1132,17 @@ Use 🤲 once naturally. Generate only the message content - make it feel like i
         topicTitle 
       }: StreamingChatRequest = requestBody
 
-      if (!person_id || !userMessage) {
-        return new Response(JSON.stringify({ error: 'person_id and message are required' }), {
+      console.log('🔍 EDGE FUNCTION DEBUG: Streaming chat request received:', {
+        person_id,
+        topicId,
+        isTopicConversation,
+        topicTitle,
+        hasFiles,
+        userMessage: userMessage?.substring(0, 100)
+      });
+
+      if (!userMessage) {
+        return new Response(JSON.stringify({ error: 'message is required' }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })

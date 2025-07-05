@@ -138,9 +138,18 @@ export default function PersonDetailPage() {
   // Handle streaming completion
   useEffect(() => {
     if (streamingMessage?.isComplete && !streamingMessage.isStreaming) {
+      console.log('🔄 COMPLETION DEBUG: Streaming completed, refreshing messages...');
+      console.log('🔄 COMPLETION DEBUG: Streaming message content length:', streamingMessage.content.length);
+      
       // The streaming API now handles saving messages, so we just need to refresh
-      refreshMessages();
-      clearStreamingMessage();
+      refreshMessages().then(() => {
+        console.log('✅ COMPLETION DEBUG: Messages refreshed, clearing streaming message');
+        clearStreamingMessage();
+      }).catch((error) => {
+        console.error('❌ COMPLETION DEBUG: Error refreshing messages:', error);
+        // Still clear the streaming message even if refresh fails
+        clearStreamingMessage();
+      });
     }
   }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, clearStreamingMessage, refreshMessages]);
 
@@ -283,6 +292,15 @@ export default function PersonDetailPage() {
           throw new Error('No authenticated session found');
         }
 
+        console.log('🚀 API DEBUG: Making request to Edge Function:', {
+          url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/chat`,
+          payload: {
+            action: 'streaming_chat',
+            ...requestPayload
+          },
+          hasAuth: !!session.access_token
+        });
+        
         const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/chat`, {
           method: 'POST',
           headers: { 
@@ -294,6 +312,12 @@ export default function PersonDetailPage() {
             action: 'streaming_chat',
             ...requestPayload
           })
+        });
+        
+        console.log('📡 API DEBUG: Response received:', {
+          status: response.status,
+          ok: response.ok,
+          headers: Object.fromEntries(response.headers.entries())
         });
 
       if (!response.ok) {
