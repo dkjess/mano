@@ -33,6 +33,8 @@ export class FileContentProcessor {
    * Process uploaded file by extracting text content and storing it
    */
   async processUploadedFile(fileId: string): Promise<FileProcessingResult> {
+    console.log(`🔍 CONTENT PROCESSOR: Starting processing for file ${fileId}`);
+    
     try {
       // Get file record
       const { data: fileRecord, error: fetchError } = await this.supabase
@@ -42,11 +44,22 @@ export class FileContentProcessor {
         .single();
 
       if (fetchError || !fileRecord) {
+        console.error(`❌ CONTENT PROCESSOR: File record not found for ${fileId}:`, fetchError);
         return { success: false, error: 'File record not found' };
       }
 
+      console.log(`🔍 CONTENT PROCESSOR: File record found:`, {
+        id: fileRecord.id,
+        originalName: fileRecord.original_name,
+        fileType: fileRecord.file_type,
+        contentType: fileRecord.content_type,
+        processingStatus: fileRecord.processing_status,
+        hasExtractedContent: !!fileRecord.extracted_content
+      });
+
       // Check if already processed
       if (fileRecord.processing_status === 'completed' && fileRecord.extracted_content) {
+        console.log(`✅ CONTENT PROCESSOR: File ${fileId} already processed, skipping`);
         return { 
           success: true, 
           extractedContent: fileRecord.extracted_content,
@@ -55,30 +68,41 @@ export class FileContentProcessor {
       }
 
       // Mark as processing
+      console.log(`🔄 CONTENT PROCESSOR: Marking file ${fileId} as processing`);
       await this.updateProcessingStatus(fileId, 'processing');
 
       // Download file from storage
+      console.log(`📥 CONTENT PROCESSOR: Downloading file from storage path: ${fileRecord.storage_path}`);
       const { data: fileData, error: downloadError } = await this.supabase.storage
         .from('message-attachments')
         .download(fileRecord.storage_path);
 
       if (downloadError || !fileData) {
+        console.error(`❌ CONTENT PROCESSOR: Failed to download file ${fileId}:`, downloadError);
         await this.updateProcessingStatus(fileId, 'failed');
         return { success: false, error: `Failed to download file: ${downloadError?.message}` };
       }
 
+      console.log(`📄 CONTENT PROCESSOR: File downloaded successfully, size: ${fileData.size} bytes`);
+
       // Extract text content
+      console.log(`🔍 CONTENT PROCESSOR: Extracting text content from ${fileRecord.content_type} file`);
       const extractedContent = await this.extractTextContent(fileData, fileRecord.content_type);
       
       if (!extractedContent) {
+        console.log(`⚠️ CONTENT PROCESSOR: No content extracted from file ${fileId} (${fileRecord.content_type})`);
         await this.updateProcessingStatus(fileId, 'completed');
         return { success: false, error: 'No content could be extracted from file' };
       }
+
+      console.log(`✅ CONTENT PROCESSOR: Extracted ${extractedContent.length} characters from file ${fileId}`);
+      console.log(`📝 CONTENT PROCESSOR: Content preview: ${extractedContent.substring(0, 200)}...`);
 
       // Generate content hash for deduplication
       const contentHash = this.generateContentHash(extractedContent);
 
       // Store extracted content
+      console.log(`💾 CONTENT PROCESSOR: Storing extracted content for file ${fileId} (${extractedContent.length} chars)`);
       const { error: updateError } = await this.supabase
         .from('message_files')
         .update({
@@ -90,9 +114,12 @@ export class FileContentProcessor {
         .eq('id', fileId);
 
       if (updateError) {
+        console.error(`❌ CONTENT PROCESSOR: Failed to store extracted content for file ${fileId}:`, updateError);
         await this.updateProcessingStatus(fileId, 'failed');
         return { success: false, error: `Failed to store extracted content: ${updateError.message}` };
       }
+
+      console.log(`✅ CONTENT PROCESSOR: Successfully stored extracted content for file ${fileId}`);
 
       // Generate and store embeddings for the file content
       try {

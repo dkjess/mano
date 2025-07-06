@@ -422,6 +422,64 @@ async function handleStreamingChat({
       conversationHistory = await getMessages(person_id, supabase)
     }
 
+    // Get file content for the most recent user message if files are present
+    let fileContent = ''
+    if (hasFiles) {
+      console.log('🔍 FILE DEBUG: hasFiles flag is true, fetching file content...')
+      try {
+        // Get the most recent user message to find attached files
+        const latestMessage = conversationHistory
+          .filter(msg => msg.is_user)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+        
+        if (latestMessage) {
+          console.log('🔍 FILE DEBUG: Latest user message found:', latestMessage.id)
+          
+          // Get files for this message
+          const { data: messageFiles, error: filesError } = await supabase
+            .from('message_files')
+            .select('*')
+            .eq('message_id', latestMessage.id)
+            .order('created_at', { ascending: true })
+          
+          if (filesError) {
+            console.error('❌ FILE DEBUG: Error fetching files:', filesError)
+          } else if (messageFiles && messageFiles.length > 0) {
+            console.log(`🔍 FILE DEBUG: Found ${messageFiles.length} files for message ${latestMessage.id}`)
+            
+            // Extract content from all files
+            const fileContents = []
+            for (const file of messageFiles) {
+              console.log(`🔍 FILE DEBUG: Processing file ${file.original_name} (${file.file_type})`)
+              console.log(`🔍 FILE DEBUG: Processing status: ${file.processing_status}`)
+              console.log(`🔍 FILE DEBUG: Has extracted content: ${!!file.extracted_content}`)
+              
+              if (file.extracted_content) {
+                fileContents.push(`\n--- File: ${file.original_name} (${file.file_type}) ---\n${file.extracted_content}`)
+                console.log(`✅ FILE DEBUG: Added content from ${file.original_name} (${file.extracted_content.length} chars)`)
+              } else {
+                console.log(`⚠️ FILE DEBUG: No extracted content for ${file.original_name} - status: ${file.processing_status}`)
+                fileContents.push(`\n--- File: ${file.original_name} (${file.file_type}) ---\n[File content not yet processed]`)
+              }
+            }
+            
+            if (fileContents.length > 0) {
+              fileContent = '\n\n--- ATTACHED FILES ---' + fileContents.join('\n') + '\n--- END FILES ---\n'
+              console.log(`✅ FILE DEBUG: Final file content prepared (${fileContent.length} chars)`)
+            }
+          } else {
+            console.log('⚠️ FILE DEBUG: No files found for latest message')
+          }
+        } else {
+          console.log('⚠️ FILE DEBUG: No latest user message found')
+        }
+      } catch (fileError) {
+        console.error('❌ FILE DEBUG: Error processing files:', fileError)
+      }
+    } else {
+      console.log('🔍 FILE DEBUG: hasFiles flag is false, skipping file content')
+    }
+
     // Build enhanced management context with vector search
     let managementContext
     try {
@@ -515,6 +573,15 @@ async function handleStreamingChat({
         try {
           console.log('🚀 Getting complete response from Anthropic (save-first approach)...')
           
+          // Prepare the full user message including file content
+          const fullUserMessage = userMessage + fileContent
+          console.log('📝 Sending to Anthropic:', {
+            originalMessage: userMessage.substring(0, 100),
+            hasFileContent: fileContent.length > 0,
+            fileContentLength: fileContent.length,
+            totalMessageLength: fullUserMessage.length
+          })
+
           // Get complete response from Anthropic (NON-streaming)
           const response = await anthropic.messages.create({
             model: 'claude-sonnet-4-20250514',
@@ -523,7 +590,7 @@ async function handleStreamingChat({
             messages: [
               {
                 role: 'user',
-                content: userMessage
+                content: fullUserMessage
               }
             ],
             stream: false  // ← Key change: get complete response first

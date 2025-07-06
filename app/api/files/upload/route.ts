@@ -54,15 +54,23 @@ export async function POST(request: NextRequest) {
 
     // Trigger content processing in background
     try {
+      console.log(`🔄 FILE PROCESSING: Starting background processing for file ${fileRecord.id} (${fileRecord.original_name})`);
       const { FileContentProcessor } = await import('@/lib/file-content-processor');
       const processor = new FileContentProcessor(supabase);
       
       // Process file content asynchronously (don't await to avoid blocking the response)
-      processor.processUploadedFile(fileRecord.id).catch(error => {
-        console.error(`Background file processing failed for file ${fileRecord.id}:`, error);
+      processor.processUploadedFile(fileRecord.id).then(result => {
+        console.log(`✅ FILE PROCESSING: Completed for file ${fileRecord.id}:`, {
+          success: result.success,
+          hasContent: !!result.extractedContent,
+          contentLength: result.extractedContent?.length || 0,
+          error: result.error
+        });
+      }).catch(error => {
+        console.error(`❌ FILE PROCESSING: Failed for file ${fileRecord.id}:`, error);
       });
     } catch (error) {
-      console.error('Error starting file content processing:', error);
+      console.error('❌ FILE PROCESSING: Error starting file content processing:', error);
       // Don't fail the upload if processing setup fails
     }
 
@@ -169,15 +177,23 @@ export async function PUT(request: NextRequest) {
 
         // Trigger content processing in background
         try {
+          console.log(`🔄 BATCH FILE PROCESSING: Starting background processing for file ${fileRecord.id} (${fileRecord.original_name})`);
           const { FileContentProcessor } = await import('@/lib/file-content-processor');
           const processor = new FileContentProcessor(supabase);
           
           // Process file content asynchronously
-          processor.processUploadedFile(fileRecord.id).catch(error => {
-            console.error(`Background file processing failed for file ${fileRecord.id}:`, error);
+          processor.processUploadedFile(fileRecord.id).then(result => {
+            console.log(`✅ BATCH FILE PROCESSING: Completed for file ${fileRecord.id}:`, {
+              success: result.success,
+              hasContent: !!result.extractedContent,
+              contentLength: result.extractedContent?.length || 0,
+              error: result.error
+            });
+          }).catch(error => {
+            console.error(`❌ BATCH FILE PROCESSING: Failed for file ${fileRecord.id}:`, error);
           });
         } catch (error) {
-          console.error('Error starting file content processing:', error);
+          console.error('❌ BATCH FILE PROCESSING: Error starting file content processing:', error);
         }
 
       } catch (error) {
