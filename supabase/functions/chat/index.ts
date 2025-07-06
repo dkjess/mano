@@ -80,6 +80,8 @@ interface Person {
 // System prompts - optimized for conversational brevity
 const SYSTEM_PROMPT = `You are Mano, an intelligent management assistant and helping hand for managers.
 
+{user_context}
+
 IMPORTANT: Keep responses conversational and concise (2-4 sentences max). Be direct, practical, and avoid lengthy explanations.
 
 Your role:
@@ -434,25 +436,36 @@ async function handleStreamingChat({
         semantic_context: context.semantic_context
       }
     } catch (contextError) {
-      console.warn('Failed to gather enhanced management context:', contextError)
-      managementContext = undefined
+      console.error('❌ CRITICAL: Failed to gather enhanced management context:', contextError)
+      // Provide basic fallback context instead of undefined
+      managementContext = {
+        people: [],
+        team_size: { total: 0, direct_reports: 0, stakeholders: 0, peers: 0 },
+        recent_themes: [],
+        current_challenges: [],
+        conversation_patterns: { cross_referencing: [] },
+        semantic_context: undefined
+      }
     }
 
     // User message is already created by the client, so we skip that step
 
     // Build system prompt and context
-    const contextualName = isTopicConversation ? topicTitle : person.name
-    const contextualRole = isTopicConversation ? 'Management Coach for Topic Discussion' : person.role
-    
-    // Use the same prompt engineering approach as the client-side implementation
-    const systemPrompt = buildSystemPrompt(
-      contextualName,
-      contextualRole,
-      person.relationship_type,
-      conversationHistory,
-      managementContext,
-      userProfile
-    )
+    let systemPrompt
+    if (isTopicConversation) {
+      // Topic conversations should use the general prompt with user context
+      systemPrompt = buildGeneralSystemPrompt(managementContext, conversationHistory, userProfile)
+    } else {
+      // Person conversations use person-specific prompt
+      systemPrompt = buildSystemPrompt(
+        person.name,
+        person.role,
+        person.relationship_type,
+        conversationHistory,
+        managementContext,
+        userProfile
+      )
+    }
 
     // Format conversation history
     const historyText = conversationHistory
