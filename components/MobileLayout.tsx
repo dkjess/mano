@@ -1,71 +1,17 @@
 'use client'
 
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { ChevronLeftIcon } from '@heroicons/react/24/outline'
-
 interface MobileLayoutProps {
   children: React.ReactNode
-  title?: string
-  subtitle?: string
-  showBackButton?: boolean
-  backHref?: string
-  rightAction?: React.ReactNode
+  className?: string
 }
 
 export function MobileLayout({ 
-  children, 
-  title = "Mano", 
-  subtitle,
-  showBackButton = true,
-  backHref = "/conversations",
-  rightAction 
+  children,
+  className = ""
 }: MobileLayoutProps) {
-  const router = useRouter()
-
-  const handleBackClick = () => {
-    if (backHref) {
-      router.push(backHref)
-    } else {
-      router.back()
-    }
-  }
-
   return (
-    <div className="mobile-layout lg:hidden flex flex-col h-screen bg-white">
-      {/* Mobile Header */}
-      <header className="mobile-header flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white sticky top-0 z-50">
-        <div className="flex items-center flex-1">
-          {showBackButton && (
-            <button
-              onClick={handleBackClick}
-              className="mobile-back-button flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 transition-colors mr-3"
-              aria-label="Go back"
-            >
-              <ChevronLeftIcon className="w-5 h-5 text-gray-600" />
-            </button>
-          )}
-          
-          <div className="flex-1 min-w-0">
-            <h1 className="mobile-title text-lg font-semibold text-gray-900 truncate">
-              {title}
-            </h1>
-            {subtitle && (
-              <p className="mobile-subtitle text-sm text-gray-500 truncate">
-                {subtitle}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {rightAction && (
-          <div className="mobile-header-action ml-3">
-            {rightAction}
-          </div>
-        )}
-      </header>
-
-      {/* Mobile Content */}
+    <div className={`mobile-layout lg:hidden flex flex-col h-screen bg-white ${className}`}>
+      {/* Mobile Content - No header, let children handle their own headers */}
       <main className="mobile-content flex-1 overflow-hidden">
         {children}
       </main>
@@ -73,41 +19,7 @@ export function MobileLayout({
   )
 }
 
-// Specialized layouts for common use cases
-
-interface ConversationMobileLayoutProps {
-  children: React.ReactNode
-  personName?: string
-  personRole?: string
-  topicTitle?: string
-  topicDescription?: string
-  rightAction?: React.ReactNode
-}
-
-export function ConversationMobileLayout({ 
-  children, 
-  personName, 
-  personRole,
-  topicTitle,
-  topicDescription,
-  rightAction 
-}: ConversationMobileLayoutProps) {
-  // Determine title and subtitle based on conversation type
-  const title = personName || topicTitle || "Conversation"
-  const subtitle = personName ? personRole : topicDescription
-
-  return (
-    <MobileLayout
-      title={title}
-      subtitle={subtitle}
-      showBackButton={true}
-      backHref="/conversations"
-      rightAction={rightAction}
-    >
-      {children}
-    </MobileLayout>
-  )
-}
+// Note: ConversationMobileLayout removed - conversations now use ConversationHeader directly
 
 // Mobile-specific conversation list item component
 interface ConversationListItemProps {

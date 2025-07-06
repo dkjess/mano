@@ -388,13 +388,8 @@ export default function TopicPage() {
         </ChatDropZone>
       </div>
 
-      {/* Mobile: Use MobileLayout with conversation header */}
-      <MobileLayout
-        title={topic?.title || "Topic"}
-        subtitle={getParticipantNames()}
-        showBackButton={true}
-        backHref="/conversations"
-      >
+      {/* Mobile: Use MobileLayout as simple container */}
+      <MobileLayout>
         <ChatDropZone
           isDragActive={isDragActive}
           onDragEnter={handleDragEnter}

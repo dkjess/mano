@@ -796,13 +796,8 @@ export default function PersonDetailPage() {
         </ChatDropZone>
       </div>
 
-      {/* Mobile: Use MobileLayout with conversation header */}
-      <MobileLayout
-        title={person?.name || "Conversation"}
-        subtitle={person?.role || getRelationshipLabel(person?.relationship_type || 'peer')}
-        showBackButton={true}
-        backHref="/conversations"
-      >
+      {/* Mobile: Use MobileLayout as simple container */}
+      <MobileLayout>
         <ChatDropZone
           isDragActive={isDragActive}
           onDragEnter={handleDragEnter}
