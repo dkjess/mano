@@ -179,8 +179,7 @@ export default function TopicPage() {
       // Clear files from UI
       clearFiles();
 
-      // Step 5: Stop thinking and start streaming
-      setIsThinking(false);
+      // Step 5: Start streaming (thinking loader will disappear when first chunk arrives)
       console.log('Starting AI streaming response...');
       const assistantMessageId = `assistant-${Date.now()}`;
       await startStreaming(assistantMessageId, async () => {
@@ -218,6 +217,10 @@ export default function TopicPage() {
         }
 
         return response.body!;
+      }, () => {
+        // Callback: Hide thinking loader when first chunk arrives
+        console.log('🎯 TOPIC DEBUG: First chunk received, hiding thinking loader');
+        setIsThinking(false);
       });
     } catch (error) {
       console.error('Failed to send message:', error);

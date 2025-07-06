@@ -16,7 +16,8 @@ export function useStreamingResponse() {
 
   const startStreaming = useCallback(async (
     messageId: string,
-    apiCall: () => Promise<ReadableStream<Uint8Array>>
+    apiCall: () => Promise<ReadableStream<Uint8Array>>,
+    onFirstChunk?: () => void
   ) => {
     // Clean up any existing stream
     if (abortControllerRef.current) {
@@ -47,6 +48,7 @@ export function useStreamingResponse() {
       let displayedLength = 0;
       let isStreamComplete = false;
       let typingStarted = false;
+      let firstChunkReceived = false;
 
       // Single continuous typing effect
       const startTyping = () => {
@@ -115,6 +117,13 @@ export function useStreamingResponse() {
                   fullBuffer += newText;
                   console.log('📝 CLIENT DEBUG: Added to buffer:', newText.length, 'chars. Total buffer:', fullBuffer.length);
                   
+                  // Call onFirstChunk callback when we receive the first content
+                  if (!firstChunkReceived && onFirstChunk) {
+                    console.log('🎯 CLIENT DEBUG: First chunk received, calling onFirstChunk callback');
+                    firstChunkReceived = true;
+                    onFirstChunk();
+                  }
+                  
                   // Start typing if not already started
                   if (!typingStarted) {
                     console.log('⌨️ CLIENT DEBUG: Starting typing effect');
@@ -142,6 +151,14 @@ export function useStreamingResponse() {
                 // If not valid JSON, might be plain text - add to buffer
                 if (data && data !== '[DONE]') {
                   fullBuffer += data;
+                  
+                  // Call onFirstChunk callback for plain text too
+                  if (!firstChunkReceived && onFirstChunk) {
+                    console.log('🎯 CLIENT DEBUG: First chunk (plain text) received, calling onFirstChunk callback');
+                    firstChunkReceived = true;
+                    onFirstChunk();
+                  }
+                  
                   if (!typingStarted) {
                     startTyping();
                   }
