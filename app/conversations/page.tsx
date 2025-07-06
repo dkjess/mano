@@ -9,6 +9,8 @@ import { formatRelativeTime } from '@/lib/utils/format-time'
 import { PlusIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { NewPersonModal } from '@/components/NewPersonModal'
+import { NewTopicModal } from '@/components/NewTopicModal'
 
 interface ConversationItem {
   id: string
@@ -33,6 +35,8 @@ export default function ConversationsPage() {
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [loading, setLoading] = useState(true)
   const [generalTopicId, setGeneralTopicId] = useState<string | null>(null)
+  const [newPersonModalOpen, setNewPersonModalOpen] = useState(false)
+  const [newTopicModalOpen, setNewTopicModalOpen] = useState(false)
   const { people } = usePeople()
   const { topics } = useTopics()
   const supabase = createClient()
@@ -204,20 +208,20 @@ export default function ConversationsPage() {
           <div className="flex items-center justify-between h-16">
             <h1 className="text-xl font-semibold text-gray-900">Conversations</h1>
             <div className="flex items-center space-x-2">
-              <Link
-                href="/topics/new"
+              <button
+                onClick={() => setNewTopicModalOpen(true)}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 <PlusIcon className="h-4 w-4 mr-1.5" />
                 Topic
-              </Link>
-              <Link
-                href="/people/new"
+              </button>
+              <button
+                onClick={() => setNewPersonModalOpen(true)}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 <PlusIcon className="h-4 w-4 mr-1.5" />
                 Person
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -245,12 +249,12 @@ export default function ConversationsPage() {
                 </Link>
               )}
               
-              <Link
-                href="/people/new"
+              <button
+                onClick={() => setNewPersonModalOpen(true)}
                 className="block w-full border border-gray-300 text-gray-700 text-center py-3 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
               >
                 Add Your First Team Member
-              </Link>
+              </button>
             </div>
           </div>
         ) : (
@@ -341,6 +345,16 @@ export default function ConversationsPage() {
           </div>
         )}
       </main>
+      
+      {/* Creation Modals */}
+      <NewPersonModal 
+        isOpen={newPersonModalOpen}
+        onClose={() => setNewPersonModalOpen(false)}
+      />
+      <NewTopicModal 
+        isOpen={newTopicModalOpen}
+        onClose={() => setNewTopicModalOpen(false)}
+      />
     </div>
   )
 }
