@@ -24,7 +24,7 @@ export default function OnboardingPage() {
   const supabase = createClient()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>(0)
+  const [currentStep, setCurrentStep] = useState<OnboardingStep | null>(null) // Will be set after background check
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [userEmail, setUserEmail] = useState<string>('')
   
@@ -38,6 +38,41 @@ export default function OnboardingPage() {
     loadUserProfile()
   }, [])
 
+  const determineStartingStep = async (): Promise<OnboardingStep> => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      throw new Error('No authenticated user')
+    }
+
+    // Check if user has email from auth
+    const hasEmail = !!user.email
+    
+    // Get user profile if it exists
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('user_id', user.id)
+      .single()
+
+    if (profile?.onboarding_completed) {
+      // Already completed onboarding, redirect
+      router.push('/')
+      return 2 // This won't be used since we're redirecting
+    }
+
+    // Determine starting step based on background check
+    if (!hasEmail) {
+      // Rare edge case: auth doesn't have email, need to collect it
+      return 0
+    } else if (profile) {
+      // Existing user resuming onboarding, skip email and resume from saved step
+      return Math.max(2, (profile.onboarding_step + 2)) as OnboardingStep
+    } else {
+      // New user with email from auth, start with name collection
+      return 2
+    }
+  }
+
   const loadUserProfile = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -46,8 +81,16 @@ export default function OnboardingPage() {
         return
       }
 
+      // Background check to determine starting step
+      const startingStep = await determineStartingStep()
+      
+      // Initialize user data
       setUserEmail(user.email || '')
+      if (user.email) {
+        setEmail(user.email)
+      }
 
+      // Load profile data if it exists
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('*')
@@ -59,23 +102,14 @@ export default function OnboardingPage() {
         setCallName(profile.call_name || '')
         setJobRole(profile.job_role || '')
         setCompany(profile.company || '')
-        
-        // Resume from saved step
-        if (!profile.onboarding_completed) {
-          // Check if we need email collection
-          if (!user.email) {
-            setCurrentStep(0)
-          } else {
-            // Skip email verification, go straight to name collection
-            setCurrentStep(Math.max(2, (profile.onboarding_step + 2)) as OnboardingStep)
-          }
-        } else {
-          // Already completed onboarding
-          router.push('/')
-        }
       }
+
+      // Set the determined starting step (this will show the UI)
+      setCurrentStep(startingStep)
     } catch (error) {
       console.error('Error loading profile:', error)
+      // Fallback to email collection step on error
+      setCurrentStep(0)
     } finally {
       setLoading(false)
     }
@@ -100,6 +134,11 @@ export default function OnboardingPage() {
     setSaving(true)
     
     try {
+      // Skip if currentStep is null (still determining step)
+      if (currentStep === null) {
+        return
+      }
+      
       // Validate current step
       if (currentStep === 0 && !email) {
         alert('Please enter your email')
@@ -181,7 +220,7 @@ export default function OnboardingPage() {
   }
 
   const handleBack = async () => {
-    if (currentStep > 0) {
+    if (currentStep !== null && currentStep > 0) {
       await saveProgress(currentStep - 1)
       setCurrentStep((currentStep - 1) as OnboardingStep)
     }
@@ -268,7 +307,7 @@ What's on your mind today? Feel free to share a current challenge, or I can help
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !saving) {
+    if (e.key === 'Enter' && !saving && currentStep !== null) {
       e.preventDefault()
       handleNext()
     }
@@ -276,12 +315,16 @@ What's on your mind today? Feel free to share a current challenge, or I can help
 
 
   const renderStep = () => {
+    if (currentStep === null) {
+      return null
+    }
+    
     switch (currentStep) {
       case 0:
         return (
           <div className="space-y-8">
             <h1 className="text-4xl font-light text-foreground">
-              I need your email to save your conversations
+              I need your email address to save your conversations
             </h1>
             <input
               type="email"
@@ -383,15 +426,17 @@ What's on your mind today? Feel free to share a current challenge, or I can help
     }
   }
 
-  if (loading) {
+  if (loading || currentStep === null) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl text-muted-foreground">Loading...</div>
+        <div className="text-xl text-muted-foreground">
+          {loading ? 'Loading...' : 'Preparing your onboarding...'}
+        </div>
       </div>
     )
   }
 
-  const showBackButton = currentStep > 0
+  const showBackButton = currentStep !== null && currentStep > 0
   const showSkipButton = currentStep === 4
   const continueText = currentStep === 5 ? 'Start chatting' : 'Continue'
 

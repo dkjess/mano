@@ -8,19 +8,35 @@ import Link from 'next/link'
 
 interface ProfileSectionProps {
   user: any
+  profile: any
   onUserUpdate: (user: any) => void
+  onProfileUpdate: (profile: any) => void
 }
 
-function ProfileSection({ user, onUserUpdate }: ProfileSectionProps) {
+function ProfileSection({ user, profile, onUserUpdate, onProfileUpdate }: ProfileSectionProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState({
     full_name: user.user_metadata?.full_name || '',
+    call_name: profile?.call_name || '',
+    title: profile?.job_role || '',
+    company: profile?.company || '',
     email: user.email || ''
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const supabase = createClient()
+
+  // Update form data when profile changes
+  useEffect(() => {
+    setFormData({
+      full_name: user.user_metadata?.full_name || '',
+      call_name: profile?.call_name || '',
+      title: profile?.job_role || '',
+      company: profile?.company || '',
+      email: user.email || ''
+    })
+  }, [user, profile])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,12 +45,28 @@ function ProfileSection({ user, onUserUpdate }: ProfileSectionProps) {
     setSuccess('')
 
     try {
-      // Update user metadata (name)
+      // Update user metadata (only full_name)
       const { data: authData, error: authError } = await supabase.auth.updateUser({
-        data: { full_name: formData.full_name.trim() }
+        data: { 
+          full_name: formData.full_name.trim()
+        }
       })
 
       if (authError) throw authError
+
+      // Update profile data in user_profiles table
+      const { data: profileData, error: profileError } = await supabase
+        .from('user_profiles')
+        .update({
+          call_name: formData.call_name.trim() || null,
+          job_role: formData.title.trim() || null,
+          company: formData.company.trim() || null
+        })
+        .eq('user_id', user.id)
+        .select()
+        .single()
+
+      if (profileError) throw profileError
 
       // Update email if changed
       if (formData.email !== user.email) {
@@ -48,9 +80,12 @@ function ProfileSection({ user, onUserUpdate }: ProfileSectionProps) {
         setSuccess('Profile updated successfully!')
       }
 
-      // Update local user state
+      // Update local state
       if (authData.user) {
         onUserUpdate(authData.user)
+      }
+      if (profileData) {
+        onProfileUpdate(profileData)
       }
 
       setIsEditing(false)
@@ -65,6 +100,9 @@ function ProfileSection({ user, onUserUpdate }: ProfileSectionProps) {
   const handleCancel = () => {
     setFormData({
       full_name: user.user_metadata?.full_name || '',
+      call_name: profile?.call_name || '',
+      title: profile?.job_role || '',
+      company: profile?.company || '',
       email: user.email || ''
     })
     setIsEditing(false)
@@ -102,6 +140,52 @@ function ProfileSection({ user, onUserUpdate }: ProfileSectionProps) {
             disabled={!isEditing}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
             placeholder="Enter your full name"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="call_name" className="block text-sm font-medium text-gray-700 mb-2">
+            Call Name
+          </label>
+          <input
+            type="text"
+            id="call_name"
+            value={formData.call_name}
+            onChange={(e) => setFormData(prev => ({ ...prev, call_name: e.target.value }))}
+            disabled={!isEditing}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+            placeholder="What would you like to be called?"
+          />
+          <p className="text-sm text-gray-500 mt-1">The name you prefer to be called in conversations</p>
+        </div>
+
+        <div>
+          <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
+            Title
+          </label>
+          <input
+            type="text"
+            id="title"
+            value={formData.title}
+            onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+            disabled={!isEditing}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+            placeholder="e.g., Senior Software Engineer, Product Manager"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="company" className="block text-sm font-medium text-gray-700 mb-2">
+            Company
+          </label>
+          <input
+            type="text"
+            id="company"
+            value={formData.company}
+            onChange={(e) => setFormData(prev => ({ ...prev, company: e.target.value }))}
+            disabled={!isEditing}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+            placeholder="Enter your company name"
           />
         </div>
 
@@ -409,13 +493,14 @@ function AccountActionsSection() {
 
 export default function AccountPage() {
   const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [activeSection, setActiveSection] = useState('profile')
   const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => {
-    async function loadUser() {
+    async function loadUserAndProfile() {
       try {
         const { data: { user }, error } = await supabase.auth.getUser()
         if (error) throw error
@@ -426,6 +511,19 @@ export default function AccountPage() {
         }
         
         setUser(user)
+
+        // Load profile data
+        const { data: profileData, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .single()
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.error('Error loading profile:', profileError)
+        } else {
+          setProfile(profileData)
+        }
       } catch (error) {
         console.error('Error loading user:', error)
         router.push('/auth/login')
@@ -434,7 +532,7 @@ export default function AccountPage() {
       }
     }
     
-    loadUser()
+    loadUserAndProfile()
   }, [router, supabase])
 
   if (loading) {
@@ -498,9 +596,17 @@ export default function AccountPage() {
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
-                {user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'}
+                {profile?.call_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'}
               </h2>
-              <p className="text-gray-600">{user.email}</p>
+              <div className="space-y-1">
+                {profile?.job_role && (
+                  <p className="text-gray-600">{profile.job_role}</p>
+                )}
+                {profile?.company && (
+                  <p className="text-gray-500 text-sm">{profile.company}</p>
+                )}
+                <p className="text-gray-500 text-sm">{user.email}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -543,7 +649,7 @@ export default function AccountPage() {
           {/* Content Sections */}
           <div className="p-6">
             {activeSection === 'profile' && (
-              <ProfileSection user={user} onUserUpdate={setUser} />
+              <ProfileSection user={user} profile={profile} onUserUpdate={setUser} onProfileUpdate={setProfile} />
             )}
 
             {activeSection === 'security' && (

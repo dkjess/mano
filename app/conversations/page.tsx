@@ -218,29 +218,29 @@ export default function ConversationsPage() {
           <div className="flex items-center justify-between h-16">
             <h1 className="text-xl font-semibold text-gray-900">Conversations</h1>
             <div className="flex items-center space-x-2">
-              {/* Desktop: Creation buttons */}
-              <div className="hidden lg:flex items-center space-x-2">
-                <button
-                  onClick={() => setNewTopicModalOpen(true)}
-                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <PlusIcon className="h-4 w-4 mr-1.5" />
-                  Topic
-                </button>
-                <button
-                  onClick={() => setNewPersonModalOpen(true)}
-                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <PlusIcon className="h-4 w-4 mr-1.5" />
-                  Person
-                </button>
-              </div>
+              {/* Creation buttons - Show on all screen sizes */}
+              <button
+                onClick={() => setNewTopicModalOpen(true)}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <PlusIcon className="h-4 w-4 mr-1.5" />
+                <span className="hidden sm:inline">Topic</span>
+                <span className="sm:hidden">+</span>
+              </button>
+              <button
+                onClick={() => setNewPersonModalOpen(true)}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <PlusIcon className="h-4 w-4 mr-1.5" />
+                <span className="hidden sm:inline">Person</span>
+                <span className="sm:hidden">👤</span>
+              </button>
 
-              {/* Mobile: Account icon */}
+              {/* Account icon - Show on all screen sizes */}
               {user && (
                 <Link
                   href="/account"
-                  className="lg:hidden flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 transition-colors"
+                  className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 transition-colors"
                 >
                   <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
                     <span className="text-xs font-medium text-blue-600">

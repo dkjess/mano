@@ -12,8 +12,11 @@ BEGIN
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE,
           preferred_name TEXT,
+          call_name TEXT,
+          job_role TEXT,
+          company TEXT,
           onboarding_completed BOOLEAN DEFAULT FALSE,
-          onboarding_step TEXT DEFAULT 'welcome',
+          onboarding_step INTEGER DEFAULT 0,
           debug_mode BOOLEAN DEFAULT FALSE,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()),
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
@@ -27,6 +30,44 @@ BEGIN
                    AND table_schema = 'public') THEN
         ALTER TABLE user_profiles ADD COLUMN debug_mode BOOLEAN DEFAULT FALSE;
     END IF;
+    
+    -- Add call_name column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'user_profiles' 
+                   AND column_name = 'call_name' 
+                   AND table_schema = 'public') THEN
+        ALTER TABLE user_profiles ADD COLUMN call_name TEXT;
+    END IF;
+    
+    -- Add job_role column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'user_profiles' 
+                   AND column_name = 'job_role' 
+                   AND table_schema = 'public') THEN
+        ALTER TABLE user_profiles ADD COLUMN job_role TEXT;
+    END IF;
+    
+    -- Add company column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'user_profiles' 
+                   AND column_name = 'company' 
+                   AND table_schema = 'public') THEN
+        ALTER TABLE user_profiles ADD COLUMN company TEXT;
+    END IF;
+    
+    -- Update onboarding_step type to integer if it's text
+    BEGIN
+        -- Check if onboarding_step is text type and convert to integer
+        IF EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'user_profiles' 
+                   AND column_name = 'onboarding_step' 
+                   AND data_type = 'text'
+                   AND table_schema = 'public') THEN
+            -- Drop existing column and recreate as integer
+            ALTER TABLE user_profiles DROP COLUMN onboarding_step;
+            ALTER TABLE user_profiles ADD COLUMN onboarding_step INTEGER DEFAULT 0;
+        END IF;
+    END;
 
     -- Add user_id column to messages table if it doesn't exist
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 

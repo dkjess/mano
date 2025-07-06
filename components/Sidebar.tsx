@@ -492,7 +492,7 @@ export function Sidebar({ currentPersonId, currentTopicId }: SidebarProps) {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">
-                {user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'}
+                {user.user_metadata?.call_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'}
               </p>
               <p className="text-xs text-gray-500 truncate">Account Settings</p>
             </div>
