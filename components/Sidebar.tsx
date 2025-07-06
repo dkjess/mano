@@ -7,7 +7,8 @@ import { useTopics } from '@/lib/hooks/useTopics'
 import { getOrCreateGeneralTopicClient } from '@/lib/general-topic'
 import { createClient } from '@/lib/supabase/client'
 import { formatRelativeTime } from '@/lib/utils/format-time'
-import { ManoOnboarding } from '@/components/ManoOnboarding'
+import { NewPersonModal } from '@/components/NewPersonModal'
+import { NewTopicModal } from '@/components/NewTopicModal'
 
 interface SidebarProps {
   currentPersonId?: string
@@ -38,8 +39,8 @@ export function Sidebar({ currentPersonId, currentTopicId }: SidebarProps) {
   const [generalTopicId, setGeneralTopicId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [conversations, setConversations] = useState<ConversationItem[]>([])
-  const [onboardingOpen, setOnboardingOpen] = useState(false)
-  const [onboardingFlow, setOnboardingFlow] = useState<'person' | 'topic'>('person')
+  const [newPersonModalOpen, setNewPersonModalOpen] = useState(false)
+  const [newTopicModalOpen, setNewTopicModalOpen] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [archivedTopics, setArchivedTopics] = useState<any[]>([])
   const supabase = createClient()
@@ -202,14 +203,12 @@ export function Sidebar({ currentPersonId, currentTopicId }: SidebarProps) {
 
   const handleNewTopic = (e: React.MouseEvent) => {
     e.preventDefault()
-    setOnboardingFlow('topic')
-    setOnboardingOpen(true)
+    setNewTopicModalOpen(true)
   }
 
   const handleAddPerson = (e: React.MouseEvent) => {
     e.preventDefault()
-    setOnboardingFlow('person')
-    setOnboardingOpen(true)
+    setNewPersonModalOpen(true)
   }
 
 
@@ -467,11 +466,14 @@ export function Sidebar({ currentPersonId, currentTopicId }: SidebarProps) {
         )}
       </nav>
 
-      {/* Onboarding Modal */}
-      <ManoOnboarding 
-        isOpen={onboardingOpen}
-        onClose={() => setOnboardingOpen(false)}
-        flowType={onboardingFlow}
+      {/* Creation Modals */}
+      <NewPersonModal 
+        isOpen={newPersonModalOpen}
+        onClose={() => setNewPersonModalOpen(false)}
+      />
+      <NewTopicModal 
+        isOpen={newTopicModalOpen}
+        onClose={() => setNewTopicModalOpen(false)}
       />
     </aside>
   )
