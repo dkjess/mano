@@ -338,7 +338,7 @@ export default function TopicPage() {
             <div>
               <EnhancedChatInput
                 onSend={handleSendMessage}
-                disabled={isLoading}
+                disabled={isLoading || streamingMessage?.isStreaming || isThinking}
                 placeholder={`Discuss ${topic.title}...`}
                 files={files}
                 onRemoveFile={removeDroppedFile}
@@ -418,7 +418,7 @@ export default function TopicPage() {
             <div>
               <EnhancedChatInput
                 onSend={handleSendMessage}
-                disabled={isLoading}
+                disabled={isLoading || streamingMessage?.isStreaming || isThinking}
                 placeholder={`Discuss ${topic.title}...`}
                 files={files}
                 onRemoveFile={removeDroppedFile}

@@ -23,6 +23,7 @@ import { MessageFile } from '@/types/database';
 import { useTopics } from '@/lib/hooks/useTopics';
 import { MobileLayout } from '@/components/MobileLayout';
 import { ConversationHeader } from '@/components/ConversationHeader';
+import { ThinkingLoader } from '@/components/chat/ThinkingLoader';
 
 
 
@@ -47,6 +48,9 @@ export default function PersonDetailPage() {
     startStreaming,
     clearStreamingMessage
   } = useStreamingResponse();
+
+  // Add thinking loader state
+  const [isThinking, setIsThinking] = useState(false);
 
   // Add file drop zone support
   const {
@@ -93,6 +97,7 @@ export default function PersonDetailPage() {
     setShowPersonEditMenu(false);
     clearStreamingMessage();
     clearFiles();
+    setIsThinking(false);
   }, [personId, clearStreamingMessage, clearFiles]);
 
   // Setup person when personId or people change
@@ -135,23 +140,31 @@ export default function PersonDetailPage() {
     scrollToBottom();
   }, [sending, streamingMessage]);
 
-  // Handle streaming completion
+  // Handle streaming completion - convert to permanent message
   useEffect(() => {
     if (streamingMessage?.isComplete && !streamingMessage.isStreaming) {
-      console.log('🔄 COMPLETION DEBUG: Streaming completed, refreshing messages...');
+      console.log('🔄 COMPLETION DEBUG: Streaming completed, converting to permanent message...');
       console.log('🔄 COMPLETION DEBUG: Streaming message content length:', streamingMessage.content.length);
       
-      // Clear streaming message immediately to prevent duplicate
+      // Convert streaming message to permanent message
+      const permanentMessage: Message = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        content: streamingMessage.content,
+        is_user: false,
+        person_id: personId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      // Add to messages array (this represents the saved message)
+      addMessage(permanentMessage);
+      
+      // Clear streaming message
       clearStreamingMessage();
       
-      // Then refresh messages to get the saved message from database
-      refreshMessages().then(() => {
-        console.log('✅ COMPLETION DEBUG: Messages refreshed');
-      }).catch((error) => {
-        console.error('❌ COMPLETION DEBUG: Error refreshing messages:', error);
-      });
+      console.log('✅ COMPLETION DEBUG: Converted to permanent message:', permanentMessage.id);
     }
-  }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, clearStreamingMessage, refreshMessages]);
+  }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, addMessage, clearStreamingMessage, personId]);
 
   const scrollToBottom = () => {
     const container = document.querySelector('.conversation-messages');
@@ -167,12 +180,12 @@ export default function PersonDetailPage() {
     }, 150);
     
     return () => clearTimeout(timer);
-  }, [personId, messages.length]);
+  }, [personId, messages.length, isThinking]);
 
   // Enhanced send message function with real API streaming
   const handleSendMessage = async (content: string, dropzoneFiles?: DroppedFile[]) => {
     // Don't send if already processing
-    if (sending || streamingMessage?.isStreaming) return;
+    if (sending || streamingMessage?.isStreaming || isThinking) return;
 
     // Check if we have either content or files
     const trimmedContent = content.trim();
@@ -185,6 +198,9 @@ export default function PersonDetailPage() {
 
     setSending(true);
     setRetryData(null);
+
+    // Show thinking loader after user message appears
+    setIsThinking(true);
 
     try {
       // Step 1: Create user message first
@@ -266,7 +282,7 @@ export default function PersonDetailPage() {
         // Continue anyway, the streaming response will still work
       }
 
-      // Step 4: Start AI streaming response
+      // Step 4: Start AI streaming response (thinking loader will disappear when first chunk arrives)
       console.log('🔍 DEBUG: Starting AI streaming response...', {
         personId,
         messageContent: trimmedContent || 'Please analyze the attached file(s)',
@@ -327,10 +343,15 @@ export default function PersonDetailPage() {
       }
 
       return response.body!;
+    }, () => {
+      // Callback: Hide thinking loader when first chunk arrives
+      console.log('🎯 PERSON DEBUG: First chunk received, hiding thinking loader');
+      setIsThinking(false);
     });
 
     } catch (error) {
       console.error('Failed to send message:', error);
+      setIsThinking(false); // Make sure to clear thinking state on error
       // Ensure we refresh messages even if there was an error
       // so the user can see their message
       try {
@@ -647,20 +668,13 @@ export default function PersonDetailPage() {
                     isUser={message.is_user ?? (message.role === 'user')}
                     files={(message as any).files || []} // Pass files if they exist
                     timestamp={new Date(message.created_at)}
-                    avatar={message.is_user ?? (message.role === 'user') ? undefined : 
-                      (personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer'))
-                    }
+                    avatar={message.is_user ?? (message.role === 'user') ? undefined : undefined}
                   />
                 ))}
                 
-                {/* Show loading state when sending */}
-                {sending && (
-                  <MessageBubble
-                    content=""
-                    isUser={false}
-                    isLoading={true}
-                    avatar={personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
-                  />
+                {/* Show thinking loader */}
+                {isThinking && (
+                  <ThinkingLoader />
                 )}
 
                 {/* Show streaming message */}
@@ -669,8 +683,8 @@ export default function PersonDetailPage() {
                     content={streamingMessage.content}
                     isUser={false}
                     isStreaming={streamingMessage.isStreaming}
+                    hasContent={streamingMessage.hasContent}
                     timestamp={new Date()}
-                    avatar={personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
                   />
                 )}
 
@@ -700,7 +714,7 @@ export default function PersonDetailPage() {
           <div>
             <EnhancedChatInput
               onSend={handleSendMessage}
-              disabled={sending || streamingMessage?.isStreaming}
+              disabled={sending || streamingMessage?.isStreaming || isThinking}
               placeholder={personId === 'general' 
                 ? 'Ask for management guidance...' 
                 : `Message ${person?.name || 'Mano'}...`
@@ -858,20 +872,13 @@ export default function PersonDetailPage() {
                     isUser={message.is_user ?? (message.role === 'user')}
                     files={(message as any).files || []} // Pass files if they exist
                     timestamp={new Date(message.created_at)}
-                    avatar={message.is_user ?? (message.role === 'user') ? undefined : 
-                      (personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer'))
-                    }
+                    avatar={message.is_user ?? (message.role === 'user') ? undefined : undefined}
                   />
                 ))}
                 
-                {/* Show loading state when sending */}
-                {sending && (
-                  <MessageBubble
-                    content=""
-                    isUser={false}
-                    isLoading={true}
-                    avatar={personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
-                  />
+                {/* Show thinking loader */}
+                {isThinking && (
+                  <ThinkingLoader />
                 )}
 
                 {/* Show streaming message */}
@@ -880,8 +887,8 @@ export default function PersonDetailPage() {
                     content={streamingMessage.content}
                     isUser={false}
                     isStreaming={streamingMessage.isStreaming}
+                    hasContent={streamingMessage.hasContent}
                     timestamp={new Date()}
-                    avatar={personId === 'general' ? '🤲' : getRelationshipEmoji(person.relationship_type || 'peer')}
                   />
                 )}
 
@@ -911,7 +918,7 @@ export default function PersonDetailPage() {
           <div>
             <EnhancedChatInput
               onSend={handleSendMessage}
-              disabled={sending || streamingMessage?.isStreaming}
+              disabled={sending || streamingMessage?.isStreaming || isThinking}
               placeholder={personId === 'general' 
                 ? 'Ask for management guidance...' 
                 : `Message ${person?.name || 'Mano'}...`
