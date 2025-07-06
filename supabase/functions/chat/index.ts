@@ -867,7 +867,8 @@ serve(async (req) => {
         const recentChallenges = managementContext.recent_themes.slice(0, 3)
         const teamDynamics = managementContext.team_dynamics || []
         const crossPersonInsights = managementContext.semantic_context?.cross_person_insights || []
-        const similarRoles = managementContext.people.filter(p => p.role === role)
+        // Exclude the newly created person from similar roles comparison
+        const similarRoles = managementContext.people.filter(p => p.role === role && p.name !== name)
 
         // Build dynamic context based on existing team patterns
         let contextualInsights = []
