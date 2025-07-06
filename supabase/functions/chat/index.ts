@@ -438,41 +438,7 @@ async function handleStreamingChat({
       managementContext = undefined
     }
 
-    // Create user message record
-    let userMessageRecord
-    if (isTopicConversation && actualTopicId) {
-      // For topic conversations
-      const { data: message, error } = await supabase
-        .from('messages')
-        .insert({
-          content: userMessage,
-          topic_id: actualTopicId,
-          person_id: null,
-          is_user: true,
-          user_id: user.id
-        })
-        .select()
-        .single()
-      
-      if (error) throw error
-      userMessageRecord = message
-    } else {
-      // For person conversations
-      const { data: message, error } = await supabase
-        .from('messages')
-        .insert({
-          content: userMessage,
-          person_id: person_id,
-          topic_id: null,
-          is_user: true,
-          user_id: user.id
-        })
-        .select()
-        .single()
-      
-      if (error) throw error
-      userMessageRecord = message
-    }
+    // User message is already created by the client, so we skip that step
 
     // Build system prompt and context
     const contextualName = isTopicConversation ? topicTitle : person.name
@@ -500,10 +466,9 @@ async function handleStreamingChat({
         let fullResponse = ''
         const encoder = new TextEncoder()
         
-        // Send initial message ID
+        // Send initial start signal
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-          type: 'start', 
-          userMessageId: userMessageRecord.id 
+          type: 'start'
         })}\n\n`))
 
         try {

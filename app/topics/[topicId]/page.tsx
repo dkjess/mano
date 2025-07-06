@@ -87,9 +87,24 @@ export default function TopicPage() {
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading || streamingMessage?.isStreaming) return;
     
+    // Step 1: Immediately show user message in UI (optimistic update)
+    const optimisticUserMessage: Message = {
+      id: `temp-${Date.now()}`,
+      content: content.trim(),
+      is_user: true,
+      user_id: '', // Will be set properly when saved
+      topic_id: topicId,
+      person_id: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    addMessage(optimisticUserMessage);
+    console.log('User message added to UI immediately');
+    
     try {
-      // Step 1: Create user message first
-      console.log('Creating user message...');
+      // Step 2: Create user message in database
+      console.log('Creating user message in database...');
       const userMessageResponse = await fetch(`/api/topics/${topicId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,7 +121,7 @@ export default function TopicPage() {
       }
 
       const { message: userMessage } = await userMessageResponse.json();
-      console.log('User message created:', userMessage.id);
+      console.log('User message created in database:', userMessage.id);
 
       // Step 2: Upload files if any
       if (files.length > 0) {
@@ -143,17 +158,7 @@ export default function TopicPage() {
       // Clear files from UI
       clearFiles();
 
-      // Step 3: Refresh messages to show the new user message with attachments
-      console.log('Refreshing messages...');
-      try {
-        await refreshMessages();
-        console.log('Messages refreshed successfully');
-      } catch (refreshError) {
-        console.error('Error refreshing messages:', refreshError);
-        // Continue anyway, the streaming response will still work
-      }
-
-      // Step 4: Start AI streaming response
+      // Step 3: Start AI streaming response
       console.log('Starting AI streaming response...');
       const assistantMessageId = `assistant-${Date.now()}`;
       await startStreaming(assistantMessageId, async () => {
