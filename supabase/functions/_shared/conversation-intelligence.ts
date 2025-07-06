@@ -189,12 +189,12 @@ export class ConversationIntelligence {
     const insights: ConversationInsight[] = [];
 
     // Detect cross-conversation intelligence insights
-    if (process.env.ANTHROPIC_API_KEY) {
+    if (Deno.env.get('ANTHROPIC_API_KEY')) {
       try {
         const crossConversationIntelligence = new CrossConversationIntelligence(
           this.supabase,
           this.userId,
-          process.env.ANTHROPIC_API_KEY
+          Deno.env.get('ANTHROPIC_API_KEY')!
         );
         
         const crossInsights = await crossConversationIntelligence.getCrossConversationInsights(managementContext);

@@ -97,12 +97,12 @@ export class ManagementContextBuilder {
       };
 
       // Generate proactive insights if requested (for general conversations or dashboard)
-      if (includeProactiveInsights && process.env.ANTHROPIC_API_KEY) {
+      if (includeProactiveInsights && Deno.env.get('ANTHROPIC_API_KEY')) {
         try {
           const proactiveInsights = new ProactiveInsightsSystem(
             this.supabase,
             this.userId,
-            process.env.ANTHROPIC_API_KEY
+            Deno.env.get('ANTHROPIC_API_KEY')!
           );
           
           context.proactive_insights = await proactiveInsights.generateProactiveInsights(context);
@@ -149,12 +149,12 @@ export class ManagementContextBuilder {
   private async getSemanticContext(query: string, currentPersonId: string) {
     try {
       // Use enhanced semantic search if API key is available
-      if (process.env.ANTHROPIC_API_KEY) {
+      if (Deno.env.get('ANTHROPIC_API_KEY')) {
         const enhancedSearch = new EnhancedSemanticSearch(
           this.supabase,
           this.vectorService,
           this.userId,
-          process.env.ANTHROPIC_API_KEY
+          Deno.env.get('ANTHROPIC_API_KEY')!
         );
 
         // Perform enhanced search

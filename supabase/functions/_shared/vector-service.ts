@@ -94,13 +94,15 @@ export class VectorService {
     try {
       const queryEmbedding = await this.generateEmbedding(query);
 
+      // Use the 5-parameter version explicitly to avoid function overloading conflicts
       const { data, error } = await this.supabase
         .rpc('match_conversation_embeddings', {
           query_embedding: queryEmbedding,
           match_user_id: userId,
           match_threshold: options.threshold || 0.78,
           match_count: options.limit || 10,
-          person_filter: options.personFilter || null
+          person_filter: options.personFilter || null,
+          topic_filter: null  // Explicitly set topic_filter to null to use the 6-parameter version
         });
 
       if (error) {
