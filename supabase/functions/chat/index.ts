@@ -425,6 +425,14 @@ async function handleStreamingChat({
     // Build enhanced management context with vector search
     let managementContext
     try {
+      console.log('🔍 CONTEXT DEBUG: Building management context...', {
+        person_id,
+        userMessage: userMessage.substring(0, 50) + '...',
+        isTopicConversation,
+        actualTopicId,
+        user_id: user.id
+      })
+      
       const contextBuilder = new ManagementContextBuilder(supabase, user.id)
       const { context } = await contextBuilder.buildFullContext(
         person_id, 
@@ -433,6 +441,13 @@ async function handleStreamingChat({
         actualTopicId,
         false // includeProactiveInsights
       )
+      
+      console.log('🔍 CONTEXT DEBUG: Raw context received:', {
+        people_count: context.people?.length || 0,
+        people_names: context.people?.map(p => p.name) || [],
+        team_size: context.team_size,
+        conversation_patterns_count: context.conversation_patterns?.most_discussed_people?.length || 0
+      })
       
       // Convert to expected format for prompt building
       managementContext = {
@@ -443,6 +458,11 @@ async function handleStreamingChat({
         conversation_patterns: context.conversation_patterns,
         semantic_context: context.semantic_context
       }
+      
+      console.log('🔍 CONTEXT DEBUG: Final managementContext for prompt:', {
+        people_count: managementContext.people?.length || 0,
+        people_sample: managementContext.people?.slice(0, 2)?.map(p => ({ name: p.name, role: p.role })) || []
+      })
     } catch (contextError) {
       console.error('❌ CRITICAL: Failed to gather enhanced management context:', contextError)
       // Provide basic fallback context instead of undefined
@@ -775,7 +795,21 @@ function buildGeneralSystemPrompt(
   conversationHistory: any[],
   userProfile: any
 ): string {
-  const contextText = managementContext ? formatContextForPrompt(managementContext) : ''
+  console.log('🔍 PROMPT DEBUG: Building general system prompt with context:', {
+    managementContext_exists: !!managementContext,
+    people_count: managementContext?.people?.length || 0,
+    contextText_preview: managementContext ? 'will format...' : 'NO CONTEXT'
+  })
+  
+  const contextText = managementContext ? formatContextForPrompt(managementContext, 'general') : 'NO TEAM CONTEXT AVAILABLE'
+  
+  console.log('🔍 PROMPT DEBUG: Formatted context text preview:', {
+    contextText_length: contextText.length,
+    contextText_preview: contextText.substring(0, 200) + '...',
+    includes_team_members: contextText.includes('TEAM MEMBERS'),
+    includes_people_names: managementContext?.people?.some((p: any) => contextText.includes(p.name)) || false
+  })
+  
   const historyText = conversationHistory
     .slice(-10)
     .map((msg: any) => `${msg.is_user ? 'Manager' : 'Mano'}: ${msg.content}`)
@@ -785,10 +819,18 @@ function buildGeneralSystemPrompt(
     `You are speaking with ${userProfile.call_name}${userProfile.job_role ? `, ${userProfile.job_role}` : ''}${userProfile.company ? ` at ${userProfile.company}` : ''}.` : 
     'You are speaking with a manager.'
 
-  return GENERAL_SYSTEM_PROMPT
+  const finalPrompt = GENERAL_SYSTEM_PROMPT
     .replace('{management_context}', contextText)
     .replace('{conversation_history}', historyText)
     .replace('{user_context}', userContext)
+    
+  console.log('🔍 PROMPT DEBUG: Final prompt preview:', {
+    prompt_length: finalPrompt.length,
+    includes_context: finalPrompt.includes('TEAM MEMBERS'),
+    still_has_placeholder: finalPrompt.includes('{management_context}')
+  })
+  
+  return finalPrompt
 }
 
 // Helper function to format error messages
