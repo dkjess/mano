@@ -34,11 +34,8 @@ export function ThinkingLoader() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setDots(prev => {
-        if (prev.length >= 3) return '';
-        return prev + '.';
-      });
-    }, 500);
+      setDots(prev => prev + '.');
+    }, 400);
 
     return () => clearInterval(interval);
   }, []);
