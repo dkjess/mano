@@ -73,8 +73,9 @@ export class ManagementContextBuilder {
       // Start background embedding job (don't wait for it)
       this.embeddingJob.processUnembeddedMessages(this.userId).catch(console.error);
       
-      // Use topic-aware people search if this is a topic conversation
-      const peoplePromise = (isTopicConversation && currentQuery) 
+      // Always use topic-aware people search when there's a query
+      // This enables cross-person context in all conversations
+      const peoplePromise = currentQuery 
         ? this.getTopicRelevantPeople(currentQuery, topicId)
         : this.getPeopleOverview();
 
@@ -178,16 +179,16 @@ export class ManagementContextBuilder {
             similarity: result.relevance_score
           }));
 
-        // Get cross-person insights
+        // Get cross-person insights - always search across all people for person conversations
         const crossPersonResults = await enhancedSearch.enhancedSearch({
           query,
-          intent: 'find_related_people',
-          additional_context: ['team collaboration', 'similar challenges']
+          intent: 'find_related_people', 
+          additional_context: ['team collaboration', 'similar challenges', 'role matching', 'people search']
         });
 
+        // For person conversations, include insights from all people, not just other people
         const crossPersonInsights = crossPersonResults
-          .filter(result => result.original_result.person_id !== currentPersonId)
-          .slice(0, 3)
+          .slice(0, 5)
           .map(result => result.original_result);
 
         console.log(`🔍 Enhanced semantic search: ${similarConversations.length} similar, ${crossPersonInsights.length} cross-person, ${semanticPatterns.length} patterns`);
@@ -241,15 +242,16 @@ export class ManagementContextBuilder {
     if (!query || allPeople.length === 0) return allPeople;
     
     try {
-      // Keywords that indicate different areas of expertise
+      // Keywords that indicate different areas of expertise and people-related queries
       const expertiseKeywords = {
-        sales: ['sales', 'revenue', 'customers', 'deals', 'accounts', 'market expansion', 'business development'],
-        marketing: ['marketing', 'brand', 'campaigns', 'content', 'social media', 'advertising', 'market expansion'],
-        technical: ['development', 'engineering', 'technical', 'technology', 'system', 'architecture'],
-        operations: ['operations', 'process', 'logistics', 'supply chain', 'efficiency'],
-        finance: ['finance', 'budget', 'cost', 'financial', 'accounting', 'investment'],
-        hr: ['hr', 'human resources', 'people', 'hiring', 'talent', 'culture'],
-        leadership: ['leadership', 'management', 'strategy', 'vision', 'direction']
+        sales: ['sales', 'revenue', 'customers', 'deals', 'accounts', 'market expansion', 'business development', 'who else', 'other sales', 'sales team'],
+        marketing: ['marketing', 'brand', 'campaigns', 'content', 'social media', 'advertising', 'market expansion', 'marketing team'],
+        technical: ['development', 'engineering', 'technical', 'technology', 'system', 'architecture', 'tech team', 'developers'],
+        operations: ['operations', 'process', 'logistics', 'supply chain', 'efficiency', 'ops team'],
+        finance: ['finance', 'budget', 'cost', 'financial', 'accounting', 'investment', 'finance team'],
+        hr: ['hr', 'human resources', 'people', 'hiring', 'talent', 'culture', 'hr team'],
+        leadership: ['leadership', 'management', 'strategy', 'vision', 'direction', 'managers', 'leads', 'head of'],
+        people_search: ['who else', 'other people', 'anyone else', 'team members', 'relates to', 'works with', 'similar role']
       };
       
       const queryLower = query.toLowerCase();
@@ -583,9 +585,9 @@ ${semantic_context.cross_person_insights.slice(0, 2).map(insight =>
   // Context awareness note
   const contextNote = currentPersonId === 'general' 
     ? '\nCONVERSATION TYPE: General management discussion - use full team context for strategic advice'
-    : `\nCONVERSATION TYPE: Focused discussion about ${people.find(p => p.id === currentPersonId)?.name || 'team member'} - but you have awareness of broader team context`;
+    : `\nCONVERSATION TYPE: Focused discussion about ${people.find(p => p.id === currentPersonId)?.name || 'team member'} - but you have full awareness of your entire team context and can reference any team member`;
 
   return `${teamOverview}${themesSection}${challengesSection}${semanticSection}${contextNote}
 
-When responding, you can reference insights from other team members and conversations when relevant, especially the semantic context provided above. Use this comprehensive awareness to provide deeply contextual and interconnected management advice.`;
+When responding, you can reference insights from other team members and conversations when relevant, especially the semantic context provided above. You have full visibility into your entire team and should answer questions about any team member or role. Use this comprehensive awareness to provide deeply contextual and interconnected management advice.`;
 } 

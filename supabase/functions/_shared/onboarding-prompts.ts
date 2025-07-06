@@ -82,7 +82,7 @@ I'm excited to be your management companion. I now know about your team and can 
 • Working through management challenges
 • Building better team dynamics
 
-Feel free to start a new conversation anytime - I'll remember everything we've discussed and can reference our shared context. You can also add more team members as your network grows.
+Feel free to start a new conversation anytime - I'll remember everything we've discussed and can reference our shared context. You can also add more team members as your team grows.
 
 Ready to tackle those management challenges together! 🤲`;
 } 
