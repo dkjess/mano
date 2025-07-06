@@ -291,21 +291,7 @@ export default function TopicPage() {
   };
 
   const getParticipantNames = () => {
-    if (!topic?.participants?.length) return 'No participants';
-    
-    const participantNames = topic.participants
-      .map(participantId => {
-        const person = people.find(p => p.id === participantId);
-        return person?.name || 'Unknown';
-      })
-      .filter(name => name !== 'Unknown');
-    
-    if (participantNames.length === 0) return 'No participants';
-    if (participantNames.length === 1) return participantNames[0];
-    if (participantNames.length === 2) return participantNames.join(' and ');
-    
-    const lastParticipant = participantNames.pop();
-    return `${participantNames.join(', ')}, and ${lastParticipant}`;
+    return ''; // Hide participants until shared topics system is implemented
   };
 
   if (!topic) {

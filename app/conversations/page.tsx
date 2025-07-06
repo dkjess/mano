@@ -115,7 +115,7 @@ export default function ConversationsPage() {
           conversationList.push({
             id: topic.id,
             title: topic.title,
-            subtitle: topic.participants?.length ? `${topic.participants.length} participants` : 'No participants',
+            subtitle: '',
             emoji: '💬',
             href: `/topics/${topic.id}`,
             type: 'topic',

@@ -128,7 +128,7 @@ export function Sidebar({ currentPersonId, currentTopicId }: SidebarProps) {
           conversationList.push({
             id: topic.id,
             title: topic.title,
-            subtitle: topic.participants?.length ? `${topic.participants.length} participants` : 'No participants',
+            subtitle: '',
             emoji: '💬',
             href: `/topics/${topic.id}`,
             type: 'topic',
@@ -327,7 +327,7 @@ export function Sidebar({ currentPersonId, currentTopicId }: SidebarProps) {
                             </span>
                           </div>
                           <p className="text-xs text-gray-500 truncate leading-relaxed">
-                            {topic.participants?.length ? `${topic.participants.length} participants` : 'No participants'}
+                            Archived topic
                           </p>
                         </div>
                       </div>
