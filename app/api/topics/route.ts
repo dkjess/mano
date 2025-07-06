@@ -74,13 +74,20 @@ export async function POST(request: NextRequest) {
       });
 
       if (welcomeError) {
-        console.error('Supabase function returned error:', welcomeError);
+        console.error('🔴 Supabase function returned error:', welcomeError);
+        console.error('🔴 Error details:', {
+          message: welcomeError.message,
+          context: welcomeError.context,
+          status: welcomeError.status
+        });
         throw welcomeError;
       }
 
+      console.log('🟢 Welcome data received:', welcomeData);
       const initialMessage = welcomeData?.welcomeMessage;
+      
       if (initialMessage) {
-        console.log('🟢 AI-generated topic welcome message:', initialMessage);
+        console.log('🟢 AI-generated topic welcome message:', initialMessage.substring(0, 100) + '...');
         console.log('🟢 Creating initial message for topic:', topic.id);
         
         // Insert the welcome message from Mano
@@ -96,10 +103,17 @@ export async function POST(request: NextRequest) {
           .single();
           
         if (messageError) {
-          console.error('Error creating initial topic message:', messageError);
+          console.error('🔴 Error creating initial topic message:', messageError);
+          console.error('🔴 Message insert details:', {
+            topic_id: topic.id,
+            content_length: initialMessage.length,
+            user_id: user.id
+          });
         } else {
-          console.log('Initial topic message created successfully:', messageData);
+          console.log('✅ Initial topic message created successfully:', messageData.id);
         }
+      } else {
+        console.warn('⚠️ No welcome message in response data:', welcomeData);
       }
     } catch (welcomeError) {
       console.error('Failed to generate AI topic welcome message:', welcomeError);
