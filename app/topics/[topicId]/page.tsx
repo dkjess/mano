@@ -276,7 +276,8 @@ export default function TopicPage() {
             isTopicConversation: true,
             topicTitle: topic?.title,
             topicId: topicId,
-            hasFiles: files.length > 0 // Indicate that files were uploaded
+            hasFiles: files.length > 0, // Indicate that files were uploaded
+            messageId: userMessage.id // Pass the actual message ID where files are attached
           })
         });
 

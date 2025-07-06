@@ -37,6 +37,7 @@ interface StreamingChatRequest {
   hasFiles?: boolean;
   isTopicConversation?: boolean;
   topicTitle?: string;
+  messageId?: string;
 }
 
 interface PersonWelcomeRequest {
@@ -313,7 +314,8 @@ async function handleStreamingChat({
   topicId,
   hasFiles,
   isTopicConversation,
-  topicTitle
+  topicTitle,
+  messageId
 }: {
   supabase: any,
   anthropic: any,
@@ -323,7 +325,8 @@ async function handleStreamingChat({
   topicId?: string,
   hasFiles?: boolean,
   isTopicConversation?: boolean,
-  topicTitle?: string
+  topicTitle?: string,
+  messageId?: string
 }) {
   console.log('🚀 STREAMING CHAT START')
   console.log('📋 Request details:', {
@@ -427,25 +430,30 @@ async function handleStreamingChat({
     if (hasFiles) {
       console.log('🔍 FILE DEBUG: hasFiles flag is true, fetching file content...')
       try {
-        // Get the most recent user message to find attached files
-        const latestMessage = conversationHistory
-          .filter(msg => msg.is_user)
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+        let targetMessageId = messageId;
         
-        if (latestMessage) {
-          console.log('🔍 FILE DEBUG: Latest user message found:', latestMessage.id)
+        // If no messageId provided, get the most recent user message to find attached files
+        if (!targetMessageId) {
+          const latestMessage = conversationHistory
+            .filter(msg => msg.is_user)
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+          targetMessageId = latestMessage?.id;
+        }
+        
+        if (targetMessageId) {
+          console.log('🔍 FILE DEBUG: Target message ID for file fetching:', targetMessageId)
           
           // Get files for this message
           const { data: messageFiles, error: filesError } = await supabase
             .from('message_files')
             .select('*')
-            .eq('message_id', latestMessage.id)
+            .eq('message_id', targetMessageId)
             .order('created_at', { ascending: true })
           
           if (filesError) {
             console.error('❌ FILE DEBUG: Error fetching files:', filesError)
           } else if (messageFiles && messageFiles.length > 0) {
-            console.log(`🔍 FILE DEBUG: Found ${messageFiles.length} files for message ${latestMessage.id}`)
+            console.log(`🔍 FILE DEBUG: Found ${messageFiles.length} files for message ${targetMessageId}`)
             
             // Extract content from all files
             const fileContents = []
@@ -468,10 +476,10 @@ async function handleStreamingChat({
               console.log(`✅ FILE DEBUG: Final file content prepared (${fileContent.length} chars)`)
             }
           } else {
-            console.log('⚠️ FILE DEBUG: No files found for latest message')
+            console.log('⚠️ FILE DEBUG: No files found for target message')
           }
         } else {
-          console.log('⚠️ FILE DEBUG: No latest user message found')
+          console.log('⚠️ FILE DEBUG: No target message ID found')
         }
       } catch (fileError) {
         console.error('❌ FILE DEBUG: Error processing files:', fileError)
@@ -1253,7 +1261,8 @@ Use 🤲 once naturally. Generate only the message content - make it feel like i
         topicId,
         hasFiles,
         isTopicConversation,
-        topicTitle
+        topicTitle,
+        messageId: (requestBody as StreamingChatRequest).messageId
       })
     }
 

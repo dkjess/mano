@@ -320,7 +320,8 @@ export default function PersonDetailPage() {
         const requestPayload = {
           person_id: personId,
           message: trimmedContent || 'Please analyze the attached file(s)',
-          hasFiles: hasFiles // Indicate that files were uploaded
+          hasFiles: hasFiles, // Indicate that files were uploaded
+          messageId: userMessage.id // Pass the actual message ID where files are attached
         };
         
         console.log('🔍 DEBUG: Sending streaming request:', requestPayload);
