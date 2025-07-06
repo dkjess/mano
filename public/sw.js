@@ -1,10 +1,8 @@
-const CACHE_NAME = 'mano-v1';
+const CACHE_NAME = 'mano-v2';
 const urlsToCache = [
   '/',
   '/people',
   '/protected',
-  '/static/js/bundle.js',
-  '/static/css/main.css',
   '/manifest.json',
   '/appicons/ios/180.png',
   '/appicons/android/android-launchericon-192-192.png',
@@ -24,6 +22,14 @@ self.addEventListener('install', (event) => {
 
 // Fetch event
 self.addEventListener('fetch', (event) => {
+  // Skip caching for API routes and dynamic requests
+  if (event.request.url.includes('/api/') || 
+      event.request.url.includes('/_next/') ||
+      event.request.method !== 'GET') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then((response) => {

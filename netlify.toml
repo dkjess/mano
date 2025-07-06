@@ -1,8 +1,6 @@
 # Netlify deployment configuration
 [build]
   command = "pnpm run build"
-  functions = "netlify/functions"
-  publish = ".next"
 
 # Production configuration (main branch)
 [context.production]
@@ -33,10 +31,37 @@
     X-XSS-Protection = "1; mode=block"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
+# Headers for service worker
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Service-Worker-Allowed = "/"
+
+# Headers for manifest.json
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+
+# API routes headers
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Content-Type = "application/json"
+
+# Redirects to handle trailing slashes and ensure proper routing
+[[redirects]]
+  from = "https://supermano.ai/*"
+  to = "https://www.supermano.ai/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "/api/:splat"
+  status = 200
+
 # Next.js specific settings
 [[plugins]]
   package = "@netlify/plugin-nextjs"
-
-[functions]
-  node_bundler = "esbuild"
-  included_files = ["netlify/functions/**"]

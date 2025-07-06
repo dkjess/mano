@@ -9,7 +9,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "setup-test-user": "npx tsx scripts/setup-test-user.ts"
+    "setup-test-user": "npx tsx scripts/setup-test-user.ts",
+    "netlify-build": "next build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.53.0",
