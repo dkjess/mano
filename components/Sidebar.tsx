@@ -43,6 +43,7 @@ export function Sidebar({ currentPersonId, currentTopicId }: SidebarProps) {
   const [newTopicModalOpen, setNewTopicModalOpen] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [archivedTopics, setArchivedTopics] = useState<any[]>([])
+  const [user, setUser] = useState<any>(null)
   const supabase = createClient()
 
   // Load conversations with timestamps and last messages (same logic as /conversations page)
@@ -56,6 +57,15 @@ export function Sidebar({ currentPersonId, currentTopicId }: SidebarProps) {
       loadArchivedTopics()
     }
   }, [showArchived])
+
+  // Load user data
+  useEffect(() => {
+    async function loadUser() {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
+    }
+    loadUser()
+  }, [])
 
   const loadConversations = async () => {
     try {
@@ -465,6 +475,35 @@ export function Sidebar({ currentPersonId, currentTopicId }: SidebarProps) {
           </section>
         )}
       </nav>
+
+      {/* Account Section */}
+      {user && (
+        <div className="border-t border-gray-200 p-4">
+          <Link
+            href="/account"
+            className="flex items-center space-x-3 w-full px-2 py-2 rounded-lg hover:bg-gray-100 transition-colors group"
+          >
+            <div className="flex-shrink-0">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <span className="text-sm font-medium text-blue-600">
+                  {user.email?.charAt(0).toUpperCase() || 'U'}
+                </span>
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">
+                {user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'}
+              </p>
+              <p className="text-xs text-gray-500 truncate">Account Settings</p>
+            </div>
+            <div className="flex-shrink-0">
+              <svg className="w-4 h-4 text-gray-400 group-hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </Link>
+        </div>
+      )}
 
       {/* Creation Modals */}
       <NewPersonModal 

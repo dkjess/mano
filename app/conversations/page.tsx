@@ -37,6 +37,7 @@ export default function ConversationsPage() {
   const [generalTopicId, setGeneralTopicId] = useState<string | null>(null)
   const [newPersonModalOpen, setNewPersonModalOpen] = useState(false)
   const [newTopicModalOpen, setNewTopicModalOpen] = useState(false)
+  const [user, setUser] = useState<any>(null)
   const { people } = usePeople()
   const { topics } = useTopics()
   const supabase = createClient()
@@ -45,6 +46,15 @@ export default function ConversationsPage() {
   useEffect(() => {
     loadConversations()
   }, [people, topics])
+
+  // Load user data
+  useEffect(() => {
+    async function loadUser() {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
+    }
+    loadUser()
+  }, [])
 
   const loadConversations = async () => {
     try {
@@ -208,20 +218,37 @@ export default function ConversationsPage() {
           <div className="flex items-center justify-between h-16">
             <h1 className="text-xl font-semibold text-gray-900">Conversations</h1>
             <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setNewTopicModalOpen(true)}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <PlusIcon className="h-4 w-4 mr-1.5" />
-                Topic
-              </button>
-              <button
-                onClick={() => setNewPersonModalOpen(true)}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <PlusIcon className="h-4 w-4 mr-1.5" />
-                Person
-              </button>
+              {/* Desktop: Creation buttons */}
+              <div className="hidden lg:flex items-center space-x-2">
+                <button
+                  onClick={() => setNewTopicModalOpen(true)}
+                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <PlusIcon className="h-4 w-4 mr-1.5" />
+                  Topic
+                </button>
+                <button
+                  onClick={() => setNewPersonModalOpen(true)}
+                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <PlusIcon className="h-4 w-4 mr-1.5" />
+                  Person
+                </button>
+              </div>
+
+              {/* Mobile: Account icon */}
+              {user && (
+                <Link
+                  href="/account"
+                  className="lg:hidden flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                    <span className="text-xs font-medium text-blue-600">
+                      {user.email?.charAt(0).toUpperCase() || 'U'}
+                    </span>
+                  </div>
+                </Link>
+              )}
             </div>
           </div>
         </div>
