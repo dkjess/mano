@@ -21,6 +21,7 @@ interface UseTopicConversationResult {
   sendMessage: (content: string) => Promise<void>;
   addMessage: (message: Message) => void;
   refreshMessages: () => Promise<void>;
+  refreshTopic: () => Promise<void>;
 }
 
 export function useTopicConversation(topicId: string): UseTopicConversationResult {
@@ -125,6 +126,23 @@ export function useTopicConversation(topicId: string): UseTopicConversationResul
     }
   }, [topicId]);
 
+  const refreshTopic = useCallback(async () => {
+    if (!topicId) return;
+    
+    try {
+      const response = await fetch(`/api/topics/${topicId}`);
+      const data = await response.json();
+      
+      if (response.ok) {
+        setTopic(data.topic);
+      } else {
+        console.error('Failed to refresh topic:', data);
+      }
+    } catch (error) {
+      console.error('Failed to refresh topic:', error);
+    }
+  }, [topicId]);
+
   return {
     topic,
     messages,
@@ -132,6 +150,7 @@ export function useTopicConversation(topicId: string): UseTopicConversationResul
     error,
     sendMessage,
     addMessage,
-    refreshMessages
+    refreshMessages,
+    refreshTopic
   };
 } 

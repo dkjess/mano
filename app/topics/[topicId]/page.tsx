@@ -13,6 +13,7 @@ import { useFileDropZone } from '@/lib/hooks/useFileDropZone';
 import { ChatDropZone } from '@/components/chat/ChatDropZone';
 import { useStreamingResponse } from '@/lib/hooks/useStreamingResponse';
 import { ConversationHeader } from '@/components/ConversationHeader';
+import { TopicMenu } from '@/components/TopicMenu';
 import { ThinkingLoader } from '@/components/chat/ThinkingLoader';
 import type { Message } from '@/types/database';
 
@@ -22,14 +23,15 @@ export default function TopicPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { people } = usePeople();
-  const { topics } = useTopics();
+  const { topics, refetch: refetchTopics } = useTopics();
   const { 
     topic, 
     messages, 
     isLoading, 
     sendMessage,
     addMessage,
-    refreshMessages 
+    refreshMessages,
+    refreshTopic
   } = useTopicConversation(topicId);
 
   // Add streaming support
@@ -41,6 +43,49 @@ export default function TopicPage() {
 
   // Add thinking loader state
   const [isThinking, setIsThinking] = useState(false);
+
+  // Topic management functions
+  const handleRenameTopic = async (newTitle: string) => {
+    try {
+      const response = await fetch(`/api/topics/${topicId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to rename topic');
+      }
+
+      // Refresh topics list and current topic
+      await Promise.all([refetchTopics(), refreshTopic()]);
+    } catch (error) {
+      console.error('Failed to rename topic:', error);
+      throw error;
+    }
+  };
+
+  const handleArchiveTopic = async () => {
+    try {
+      const response = await fetch(`/api/topics/${topicId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'archived' })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to archive topic');
+      }
+
+      // Redirect to conversations page after archiving
+      window.location.href = '/conversations';
+    } catch (error) {
+      console.error('Failed to archive topic:', error);
+      throw error;
+    }
+  };
 
   // Add file drop zone support
   const {
@@ -290,6 +335,14 @@ export default function TopicPage() {
             <ConversationHeader
               title={`💬 ${topic.title}`}
               subtitle={getParticipantNames()}
+              rightAction={
+                <TopicMenu
+                  topicId={topicId}
+                  topicTitle={topic.title}
+                  onRename={handleRenameTopic}
+                  onArchive={handleArchiveTopic}
+                />
+              }
             />
 
             <div className="conversation-messages">
@@ -370,6 +423,14 @@ export default function TopicPage() {
             <ConversationHeader
               title={`💬 ${topic.title}`}
               subtitle={getParticipantNames()}
+              rightAction={
+                <TopicMenu
+                  topicId={topicId}
+                  topicTitle={topic.title}
+                  onRename={handleRenameTopic}
+                  onArchive={handleArchiveTopic}
+                />
+              }
             />
 
             <div className="conversation-messages">
