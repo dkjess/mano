@@ -2494,3 +2494,109 @@ html, body {
   color: rgba(107, 114, 128, 0.1) !important;
   font-style: normal !important;
 }
+
+/* File Upload - Drag and Drop Zone */
+.chat-drop-zone {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+}
+
+.chat-drop-zone.drag-active {
+  /* Add visual feedback when dragging is active */
+}
+
+.drop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.drop-content {
+  background: var(--color-white);
+  border-radius: 16px;
+  padding: var(--space-2xl);
+  text-align: center;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border: 2px dashed var(--color-gray-300);
+  max-width: 400px;
+  margin: var(--space-lg);
+}
+
+.drop-icon {
+  font-size: 48px;
+  line-height: 1;
+  margin-bottom: var(--space-lg);
+  display: block;
+}
+
+.drop-text {
+  font-family: var(--font-secondary);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-black);
+  margin-bottom: var(--space-sm);
+  line-height: var(--line-height-normal);
+}
+
+.drop-subtext {
+  font-family: var(--font-secondary);
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--color-gray-600);
+  line-height: var(--line-height-normal);
+}
+
+.chat-drop-zone.disabled {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Enhanced Thinking Loader Styles */
+.thinking-message {
+  display: inline-block;
+  transition: opacity 0.3s ease;
+}
+
+.thinking-message.file-phase {
+  color: var(--color-gray-700);
+}
+
+.thinking-message.thinking-phase {
+  color: var(--color-gray-600);
+}
+
+/* File Upload Status in Messages */
+.message-file-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-left: var(--space-sm);
+}
+
+.message-file-status.uploading {
+  color: var(--color-blue-600, #3b82f6);
+}
+
+.message-file-status.processing {
+  color: var(--color-orange-600, #ea580c);
+}
+
+.message-file-status.ready {
+  color: var(--color-green-600, #059669);
+}

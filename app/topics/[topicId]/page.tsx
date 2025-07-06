@@ -15,6 +15,7 @@ import { useStreamingResponse } from '@/lib/hooks/useStreamingResponse';
 import { ConversationHeader } from '@/components/ConversationHeader';
 import { TopicMenu } from '@/components/TopicMenu';
 import { ThinkingLoader } from '@/components/chat/ThinkingLoader';
+import { EnhancedThinkingLoader } from '@/components/chat/EnhancedThinkingLoader';
 import type { Message } from '@/types/database';
 
 export default function TopicPage() {
@@ -43,6 +44,18 @@ export default function TopicPage() {
 
   // Add thinking loader state
   const [isThinking, setIsThinking] = useState(false);
+  const [thinkingHasFiles, setThinkingHasFiles] = useState(false);
+  const [thinkingFileCount, setThinkingFileCount] = useState(0);
+
+  // Helper function for file icons
+  const getFileIconByType = (type: string): string => {
+    switch (type) {
+      case 'image': return '🖼️';
+      case 'transcript': return '📝';
+      case 'document': return '📄';
+      default: return '📎';
+    }
+  };
 
   // Topic management functions
   const handleRenameTopic = async (newTitle: string) => {
@@ -150,23 +163,35 @@ export default function TopicPage() {
       clearStreamingMessage();
     }
     
+    const hasFiles = files.length > 0;
+    
     // Step 1: Immediately show user message in UI (optimistic update)
-    const optimisticUserMessage: Message = {
+    const optimisticUserMessage: Message & { files?: any[] } = {
       id: `temp-${Date.now()}`,
-      content: content.trim(),
+      content: content.trim() || '[File attachment]',
       is_user: true,
       user_id: '', // Will be set properly when saved
       topic_id: topicId,
       person_id: null,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      files: files.map(f => ({
+        id: f.id,
+        name: f.file.name,
+        type: f.type as 'image' | 'transcript' | 'document',
+        size: f.file.size,
+        icon: getFileIconByType(f.type),
+        status: 'uploading' as const
+      }))
     };
     
     addMessage(optimisticUserMessage);
     console.log('User message added to UI immediately');
     
-    // Step 2: Show thinking loader
+    // Step 2: Show thinking loader with file context
     setIsThinking(true);
+    setThinkingHasFiles(hasFiles);
+    setThinkingFileCount(files.length);
     
     try {
       // Step 3: Create user message in database
@@ -355,7 +380,10 @@ export default function TopicPage() {
                   
                   {/* Show thinking loader */}
                   {isThinking && (
-                    <ThinkingLoader />
+                    <EnhancedThinkingLoader 
+                      hasFiles={thinkingHasFiles} 
+                      fileCount={thinkingFileCount} 
+                    />
                   )}
                   
                   {/* Show streaming message only if it's not already in messages array */}
@@ -438,7 +466,10 @@ export default function TopicPage() {
                   
                   {/* Show thinking loader */}
                   {isThinking && (
-                    <ThinkingLoader />
+                    <EnhancedThinkingLoader 
+                      hasFiles={thinkingHasFiles} 
+                      fileCount={thinkingFileCount} 
+                    />
                   )}
                   
                   {/* Show streaming message only if it's not already in messages array */}

@@ -24,6 +24,7 @@ import { useTopics } from '@/lib/hooks/useTopics';
 import { MobileLayout } from '@/components/MobileLayout';
 import { ConversationHeader } from '@/components/ConversationHeader';
 import { ThinkingLoader } from '@/components/chat/ThinkingLoader';
+import { EnhancedThinkingLoader } from '@/components/chat/EnhancedThinkingLoader';
 
 
 
@@ -51,6 +52,8 @@ export default function PersonDetailPage() {
 
   // Add thinking loader state
   const [isThinking, setIsThinking] = useState(false);
+  const [thinkingHasFiles, setThinkingHasFiles] = useState(false);
+  const [thinkingFileCount, setThinkingFileCount] = useState(0);
 
   // Add file drop zone support
   const {
@@ -196,11 +199,33 @@ export default function PersonDetailPage() {
       return;
     }
 
+    // Create optimistic user message with files for immediate display
+    const optimisticUserMessage = {
+      id: `temp-${Date.now()}`,
+      content: trimmedContent || '[File attachment]',
+      is_user: true,
+      person_id: personId,
+      created_at: new Date().toISOString(),
+      files: files.map(f => ({
+        id: f.id,
+        name: f.file.name,
+        type: f.type as 'image' | 'transcript' | 'document',
+        size: f.file.size,
+        icon: getFileIconByType(f.type),
+        status: 'uploading' as const
+      }))
+    };
+
+    // Add optimistic message to UI immediately
+    setMessages(prev => [...prev, optimisticUserMessage as any]);
+
     setSending(true);
     setRetryData(null);
 
-    // Show thinking loader after user message appears
+    // Show thinking loader with file context after user message appears
     setIsThinking(true);
+    setThinkingHasFiles(hasFiles);
+    setThinkingFileCount(files.length);
 
     try {
       // Step 1: Create user message first
@@ -674,7 +699,10 @@ export default function PersonDetailPage() {
                 
                 {/* Show thinking loader */}
                 {isThinking && (
-                  <ThinkingLoader />
+                  <EnhancedThinkingLoader 
+                    hasFiles={thinkingHasFiles} 
+                    fileCount={thinkingFileCount} 
+                  />
                 )}
 
                 {/* Show streaming message */}
@@ -873,7 +901,10 @@ export default function PersonDetailPage() {
                 
                 {/* Show thinking loader */}
                 {isThinking && (
-                  <ThinkingLoader />
+                  <EnhancedThinkingLoader 
+                    hasFiles={thinkingHasFiles} 
+                    fileCount={thinkingFileCount} 
+                  />
                 )}
 
                 {/* Show streaming message */}
