@@ -13,6 +13,7 @@ import { useFileDropZone } from '@/lib/hooks/useFileDropZone';
 import { ChatDropZone } from '@/components/chat/ChatDropZone';
 import { useStreamingResponse } from '@/lib/hooks/useStreamingResponse';
 import { ConversationHeader } from '@/components/ConversationHeader';
+import { ThinkingLoader } from '@/components/chat/ThinkingLoader';
 import type { Message } from '@/types/database';
 
 export default function TopicPage() {
@@ -37,6 +38,9 @@ export default function TopicPage() {
     startStreaming,
     clearStreamingMessage
   } = useStreamingResponse();
+
+  // Add thinking loader state
+  const [isThinking, setIsThinking] = useState(false);
 
   // Add file drop zone support
   const {
@@ -64,7 +68,7 @@ export default function TopicPage() {
     }, 150);
     
     return () => clearTimeout(timer);
-  }, [topicId, messages.length, streamingMessage?.content]);
+  }, [topicId, messages.length, streamingMessage?.content, isThinking]);
 
   // Handle streaming completion - convert to permanent message
   useEffect(() => {
@@ -94,7 +98,7 @@ export default function TopicPage() {
   }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, addMessage, clearStreamingMessage, topicId]);
 
   const handleSendMessage = async (content: string) => {
-    if (!content.trim() || isLoading || streamingMessage?.isStreaming) return;
+    if (!content.trim() || isLoading || streamingMessage?.isStreaming || isThinking) return;
     
     // Clear any previous streaming message
     if (streamingMessage) {
@@ -116,8 +120,11 @@ export default function TopicPage() {
     addMessage(optimisticUserMessage);
     console.log('User message added to UI immediately');
     
+    // Step 2: Show thinking loader
+    setIsThinking(true);
+    
     try {
-      // Step 2: Create user message in database
+      // Step 3: Create user message in database
       console.log('Creating user message in database...');
       const userMessageResponse = await fetch(`/api/topics/${topicId}/messages`, {
         method: 'POST',
@@ -137,7 +144,7 @@ export default function TopicPage() {
       const { message: userMessage } = await userMessageResponse.json();
       console.log('User message created in database:', userMessage.id);
 
-      // Step 2: Upload files if any
+      // Step 4: Upload files if any
       if (files.length > 0) {
         console.log(`Uploading ${files.length} files...`);
         const uploadPromises = files.map(async (droppedFile) => {
@@ -172,7 +179,8 @@ export default function TopicPage() {
       // Clear files from UI
       clearFiles();
 
-      // Step 3: Start AI streaming response
+      // Step 5: Stop thinking and start streaming
+      setIsThinking(false);
       console.log('Starting AI streaming response...');
       const assistantMessageId = `assistant-${Date.now()}`;
       await startStreaming(assistantMessageId, async () => {
@@ -213,6 +221,7 @@ export default function TopicPage() {
       });
     } catch (error) {
       console.error('Failed to send message:', error);
+      setIsThinking(false); // Make sure to clear thinking state on error
       // Ensure we refresh messages even if there was an error
       // so the user can see their message
       try {
@@ -302,6 +311,11 @@ export default function TopicPage() {
                     />
                   ))}
                   
+                  {/* Show thinking loader */}
+                  {isThinking && (
+                    <ThinkingLoader />
+                  )}
+                  
                   {/* Show streaming message only if it's not already in messages array */}
                   {streamingMessage && !messages.some(m => m.id === streamingMessage.id) && (
                     <MessageBubble
@@ -376,6 +390,11 @@ export default function TopicPage() {
                       avatar={message.is_user ?? (message.role === 'user') ? undefined : '💬'}
                     />
                   ))}
+                  
+                  {/* Show thinking loader */}
+                  {isThinking && (
+                    <ThinkingLoader />
+                  )}
                   
                   {/* Show streaming message only if it's not already in messages array */}
                   {streamingMessage && !messages.some(m => m.id === streamingMessage.id) && (
