@@ -74,18 +74,22 @@ export default function TopicPage() {
       
       // The streaming API now handles saving messages, so we just need to refresh
       refreshMessages().then(() => {
-        console.log('✅ TOPIC COMPLETION DEBUG: Messages refreshed, clearing streaming message');
-        clearStreamingMessage();
+        console.log('✅ TOPIC COMPLETION DEBUG: Messages refreshed');
+        // Don't clear streaming message immediately to prevent flash
+        // It will be cleared on next message send
       }).catch((error) => {
         console.error('❌ TOPIC COMPLETION DEBUG: Error refreshing messages:', error);
-        // Still clear the streaming message even if refresh fails
-        clearStreamingMessage();
       });
     }
-  }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, clearStreamingMessage, refreshMessages]);
+  }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, refreshMessages]);
 
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading || streamingMessage?.isStreaming) return;
+    
+    // Clear any previous streaming message
+    if (streamingMessage) {
+      clearStreamingMessage();
+    }
     
     // Step 1: Immediately show user message in UI (optimistic update)
     const optimisticUserMessage: Message = {

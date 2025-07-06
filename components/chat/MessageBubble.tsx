@@ -48,20 +48,24 @@ export function MessageBubble({
 
   // Fetch files for this message
   useEffect(() => {
-    if (messageId && !isLoading && !isStreaming && messageFiles.length === 0) {
-      setLoadingFiles(true);
+    // Skip fetching for temporary message IDs (optimistic updates)
+    if (messageId && !messageId.startsWith('temp-') && !isLoading && !isStreaming && messageFiles.length === 0) {
+      // Don't show loading state unless we know there are files
+      // This prevents the flashing "Loading attachments..." message
       fetch(`/api/files/${messageId}`)
         .then(response => response.json())
         .then(data => {
-          if (data.success && data.files) {
+          if (data.success && data.files && data.files.length > 0) {
+            setLoadingFiles(true); // Only show loading if files exist
             setMessageFiles(data.files);
+            setLoadingFiles(false);
           }
         })
         .catch(error => {
-          console.error('Failed to fetch message files:', error);
-        })
-        .finally(() => {
-          setLoadingFiles(false);
+          // Silently handle errors for messages without files
+          if (!error.message?.includes('404')) {
+            console.error('Failed to fetch message files:', error);
+          }
         });
     }
   }, [messageId, isLoading, isStreaming, messageFiles.length]);
@@ -121,8 +125,8 @@ export function MessageBubble({
           </div>
         )}
         
-        {/* Loading indicator for files */}
-        {loadingFiles && (
+        {/* Loading indicator for files - only shown when we know files exist */}
+        {loadingFiles && messageFiles.length > 0 && (
           <div className="message-files-loading">
             <span className="text-sm text-gray-500">Loading attachments...</span>
           </div>
@@ -169,8 +173,8 @@ export function MessageBubble({
           </div>
         )}
         
-        {/* Loading indicator for files */}
-        {loadingFiles && !isLoading && (
+        {/* Loading indicator for files - only shown when we know files exist */}
+        {loadingFiles && !isLoading && messageFiles.length > 0 && (
           <div className="message-files-loading">
             <span className="text-sm text-gray-500">Loading attachments...</span>
           </div>
