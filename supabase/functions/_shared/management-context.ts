@@ -73,9 +73,9 @@ export class ManagementContextBuilder {
       // Start background embedding job (don't wait for it)
       this.embeddingJob.processUnembeddedMessages(this.userId).catch(console.error);
       
-      // Always use topic-aware people search when there's a query
+      // Always use topic-aware people search when there's a meaningful query
       // This enables cross-person context in all conversations
-      const peoplePromise = currentQuery 
+      const peoplePromise = (currentQuery && currentQuery.trim().length > 0) 
         ? this.getTopicRelevantPeople(currentQuery, topicId)
         : this.getPeopleOverview();
 
