@@ -141,14 +141,14 @@ export default function PersonDetailPage() {
       console.log('🔄 COMPLETION DEBUG: Streaming completed, refreshing messages...');
       console.log('🔄 COMPLETION DEBUG: Streaming message content length:', streamingMessage.content.length);
       
-      // The streaming API now handles saving messages, so we just need to refresh
+      // Clear streaming message immediately to prevent duplicate
+      clearStreamingMessage();
+      
+      // Then refresh messages to get the saved message from database
       refreshMessages().then(() => {
-        console.log('✅ COMPLETION DEBUG: Messages refreshed, clearing streaming message');
-        clearStreamingMessage();
+        console.log('✅ COMPLETION DEBUG: Messages refreshed');
       }).catch((error) => {
         console.error('❌ COMPLETION DEBUG: Error refreshing messages:', error);
-        // Still clear the streaming message even if refresh fails
-        clearStreamingMessage();
       });
     }
   }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, clearStreamingMessage, refreshMessages]);

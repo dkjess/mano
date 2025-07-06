@@ -66,22 +66,32 @@ export default function TopicPage() {
     return () => clearTimeout(timer);
   }, [topicId, messages.length, streamingMessage?.content]);
 
-  // Handle streaming completion
+  // Handle streaming completion - convert to permanent message
   useEffect(() => {
     if (streamingMessage?.isComplete && !streamingMessage.isStreaming) {
-      console.log('🔄 TOPIC COMPLETION DEBUG: Streaming completed, refreshing messages...');
+      console.log('🔄 TOPIC COMPLETION DEBUG: Streaming completed, converting to permanent message...');
       console.log('🔄 TOPIC COMPLETION DEBUG: Streaming message content length:', streamingMessage.content.length);
       
-      // The streaming API now handles saving messages, so we just need to refresh
-      refreshMessages().then(() => {
-        console.log('✅ TOPIC COMPLETION DEBUG: Messages refreshed');
-        // Don't clear streaming message immediately to prevent flash
-        // It will be cleared on next message send
-      }).catch((error) => {
-        console.error('❌ TOPIC COMPLETION DEBUG: Error refreshing messages:', error);
-      });
+      // Convert streaming message to permanent message
+      const permanentMessage: Message = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Generate proper UUID-like ID
+        content: streamingMessage.content,
+        is_user: false,
+        topic_id: topicId,
+        person_id: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      // Add to messages array (this represents the saved message)
+      addMessage(permanentMessage);
+      
+      // Clear streaming message
+      clearStreamingMessage();
+      
+      console.log('✅ TOPIC COMPLETION DEBUG: Converted to permanent message:', permanentMessage.id);
     }
-  }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, refreshMessages]);
+  }, [streamingMessage?.isComplete, streamingMessage?.isStreaming, addMessage, clearStreamingMessage, topicId]);
 
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading || streamingMessage?.isStreaming) return;
@@ -292,8 +302,8 @@ export default function TopicPage() {
                     />
                   ))}
                   
-                  {/* Show streaming message */}
-                  {streamingMessage && (
+                  {/* Show streaming message only if it's not already in messages array */}
+                  {streamingMessage && !messages.some(m => m.id === streamingMessage.id) && (
                     <MessageBubble
                       key={streamingMessage.id}
                       content={streamingMessage.content}
@@ -367,8 +377,8 @@ export default function TopicPage() {
                     />
                   ))}
                   
-                  {/* Show streaming message */}
-                  {streamingMessage && (
+                  {/* Show streaming message only if it's not already in messages array */}
+                  {streamingMessage && !messages.some(m => m.id === streamingMessage.id) && (
                     <MessageBubble
                       key={streamingMessage.id}
                       content={streamingMessage.content}
