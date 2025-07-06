@@ -326,8 +326,8 @@ export default function TopicPage() {
                       content={streamingMessage.content}
                       isUser={false}
                       timestamp={new Date()}
-                      avatar="💬"
                       isStreaming={streamingMessage.isStreaming}
+                      hasContent={streamingMessage.hasContent}
                     />
                   )}
                 </div>
@@ -406,8 +406,8 @@ export default function TopicPage() {
                       content={streamingMessage.content}
                       isUser={false}
                       timestamp={new Date()}
-                      avatar="💬"
                       isStreaming={streamingMessage.isStreaming}
+                      hasContent={streamingMessage.hasContent}
                     />
                   )}
                 </div>

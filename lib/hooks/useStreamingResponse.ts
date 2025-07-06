@@ -7,6 +7,7 @@ interface StreamingMessage {
   content: string;
   isComplete: boolean;
   isStreaming: boolean;
+  hasContent: boolean;
 }
 
 export function useStreamingResponse() {
@@ -33,7 +34,8 @@ export function useStreamingResponse() {
       id: messageId,
       content: '',
       isComplete: false,
-      isStreaming: true
+      isStreaming: true,
+      hasContent: false
     });
 
     try {
@@ -79,7 +81,8 @@ export function useStreamingResponse() {
             setStreamingMessage(prev => prev ? {
               ...prev,
               isComplete: true,
-              isStreaming: false
+              isStreaming: false,
+              hasContent: true
             } : null);
           }
           // If displayedLength >= fullBuffer.length but !isStreamComplete,
@@ -124,6 +127,9 @@ export function useStreamingResponse() {
                     onFirstChunk();
                   }
                   
+                  // Mark that we have content now
+                  setStreamingMessage(prev => prev ? { ...prev, hasContent: true } : prev);
+                  
                   // Start typing if not already started
                   if (!typingStarted) {
                     console.log('⌨️ CLIENT DEBUG: Starting typing effect');
@@ -159,6 +165,9 @@ export function useStreamingResponse() {
                     onFirstChunk();
                   }
                   
+                  // Mark that we have content now
+                  setStreamingMessage(prev => prev ? { ...prev, hasContent: true } : prev);
+                  
                   if (!typingStarted) {
                     startTyping();
                   }
@@ -181,7 +190,8 @@ export function useStreamingResponse() {
               ...prev,
               content: fullBuffer || 'Sorry, there was an error processing your message.',
               isComplete: true,
-              isStreaming: false
+              isStreaming: false,
+              hasContent: true
             } : null);
           }
         }
@@ -195,7 +205,8 @@ export function useStreamingResponse() {
         ...prev,
         content: 'Sorry, there was an error processing your message.',
         isComplete: true,
-        isStreaming: false
+        isStreaming: false,
+        hasContent: true
       } : null);
     }
   }, []);
@@ -211,7 +222,8 @@ export function useStreamingResponse() {
     setStreamingMessage(prev => prev ? {
       ...prev,
       isComplete: true,
-      isStreaming: false
+      isStreaming: false,
+      hasContent: true
     } : null);
   }, []);
 

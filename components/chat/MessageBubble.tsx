@@ -11,6 +11,7 @@ interface MessageBubbleProps {
   files?: MessageFile[];
   isLoading?: boolean;
   isStreaming?: boolean;
+  hasContent?: boolean; // For controlling cursor visibility
   timestamp?: Date;
   avatar?: string;
   onComplete?: () => void;
@@ -23,6 +24,7 @@ export function MessageBubble({
   files = [],
   isLoading = false,
   isStreaming = false,
+  hasContent = true,
   timestamp,
   avatar,
   onComplete
@@ -38,13 +40,14 @@ export function MessageBubble({
   useEffect(() => {
     if (isStreaming) {
       setDisplayedContent(content);
-      setShowCursor(true);
+      // Only show cursor if we have content to display
+      setShowCursor(hasContent);
     } else if (!isLoading) {
       setDisplayedContent(content);
       setShowCursor(false);
       onComplete?.();
     }
-  }, [content, isStreaming, isLoading, onComplete]);
+  }, [content, isStreaming, isLoading, hasContent, onComplete]);
 
   // Fetch files for this message
   useEffect(() => {
@@ -147,9 +150,11 @@ export function MessageBubble({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="message-assistant-emoji">
-        {avatar || '✋'}
-      </div>
+      {avatar && (
+        <div className="message-assistant-emoji">
+          {avatar}
+        </div>
+      )}
       <div className="message-assistant-content">
         {isLoading ? (
           <ManoThinkingLoader />
