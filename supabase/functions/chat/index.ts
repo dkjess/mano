@@ -423,7 +423,8 @@ async function handleStreamingChat({
         person_id, 
         userMessage,
         isTopicConversation,
-        actualTopicId
+        actualTopicId,
+        false // includeProactiveInsights
       )
       
       // Convert to expected format for prompt building

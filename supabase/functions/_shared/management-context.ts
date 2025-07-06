@@ -59,7 +59,13 @@ export class ManagementContextBuilder {
     this.embeddingJob = new EmbeddingJob(supabase, this.vectorService);
   }
 
-  async buildFullContext(currentPersonId: string, currentQuery?: string, includeProactiveInsights: boolean = false): Promise<{
+  async buildFullContext(
+    currentPersonId: string, 
+    currentQuery?: string, 
+    isTopicConversation?: boolean,
+    topicId?: string,
+    includeProactiveInsights: boolean = false
+  ): Promise<{
     context: ManagementContext;
     enhancement?: any;
   }> {
@@ -67,8 +73,13 @@ export class ManagementContextBuilder {
       // Start background embedding job (don't wait for it)
       this.embeddingJob.processUnembeddedMessages(this.userId).catch(console.error);
       
+      // Use topic-aware people search if this is a topic conversation
+      const peoplePromise = (isTopicConversation && currentQuery) 
+        ? this.getTopicRelevantPeople(currentQuery, topicId)
+        : this.getPeopleOverview();
+
       const [people, themes, challenges, patterns, semanticContext] = await Promise.all([
-        this.getPeopleOverview(),
+        peoplePromise,
         this.getRecentThemes(),
         this.getCurrentChallenges(),
         this.getConversationPatterns(),
@@ -223,8 +234,74 @@ export class ManagementContextBuilder {
     }
   }
 
+  private async getTopicRelevantPeople(query: string, topicId?: string): Promise<PersonSummary[]> {
+    // Get all people first
+    const allPeople = await this.getPeopleOverview();
+    
+    if (!query || allPeople.length === 0) return allPeople;
+    
+    try {
+      // Keywords that indicate different areas of expertise
+      const expertiseKeywords = {
+        sales: ['sales', 'revenue', 'customers', 'deals', 'accounts', 'market expansion', 'business development'],
+        marketing: ['marketing', 'brand', 'campaigns', 'content', 'social media', 'advertising', 'market expansion'],
+        technical: ['development', 'engineering', 'technical', 'technology', 'system', 'architecture'],
+        operations: ['operations', 'process', 'logistics', 'supply chain', 'efficiency'],
+        finance: ['finance', 'budget', 'cost', 'financial', 'accounting', 'investment'],
+        hr: ['hr', 'human resources', 'people', 'hiring', 'talent', 'culture'],
+        leadership: ['leadership', 'management', 'strategy', 'vision', 'direction']
+      };
+      
+      const queryLower = query.toLowerCase();
+      
+      // Score people based on role relevance to query
+      const scoredPeople = allPeople.map(person => {
+        let relevanceScore = 0;
+        const roleLower = (person.role || '').toLowerCase();
+        
+        // Check each expertise area
+        for (const [area, keywords] of Object.entries(expertiseKeywords)) {
+          const queryMatches = keywords.some(keyword => queryLower.includes(keyword));
+          const roleMatches = keywords.some(keyword => roleLower.includes(keyword.split(' ')[0])); // Match first word
+          
+          if (queryMatches && roleMatches) {
+            relevanceScore += 10; // High relevance
+          } else if (queryMatches || roleMatches) {
+            relevanceScore += 3; // Some relevance
+          }
+        }
+        
+        // Boost recent interactions
+        if (person.last_contact) {
+          const daysSinceContact = Math.floor((Date.now() - new Date(person.last_contact).getTime()) / (1000 * 60 * 60 * 24));
+          if (daysSinceContact < 7) relevanceScore += 2;
+          else if (daysSinceContact < 30) relevanceScore += 1;
+        }
+        
+        return { ...person, relevanceScore };
+      });
+      
+      // Sort by relevance score, then by recent contact
+      return scoredPeople
+        .sort((a, b) => {
+          if (b.relevanceScore !== a.relevanceScore) {
+            return b.relevanceScore - a.relevanceScore;
+          }
+          // If same relevance, prioritize recent contact
+          const aContact = a.last_contact ? new Date(a.last_contact).getTime() : 0;
+          const bContact = b.last_contact ? new Date(b.last_contact).getTime() : 0;
+          return bContact - aContact;
+        })
+        .map(({ relevanceScore, ...person }) => person); // Remove score from final result
+        
+    } catch (error) {
+      console.error('Error in topic-relevant people search:', error);
+      return allPeople; // Fallback to all people
+    }
+  }
+
   private async getPeopleOverview(): Promise<PersonSummary[]> {
-    // Get all people in user's network
+    // Get all team members
     const { data: people } = await this.supabase
       .from('people')
       .select('id, name, role, relationship_type, created_at')
@@ -460,9 +537,9 @@ export function formatContextForPrompt(context: ManagementContext, currentPerson
       ? '\nCONVERSATION TYPE: General management discussion - no team members added yet, focus on general management advice'
       : '\nCONVERSATION TYPE: Individual discussion - no broader team context available yet';
     
-    return `TEAM OVERVIEW: No team members have been added to your network yet. Consider adding your direct reports, peers, managers, and key stakeholders to get more contextual management advice.${emptyTeamNote}
+    return `TEAM OVERVIEW: No team members have been added yet. Consider adding your direct reports, peers, managers, and key stakeholders to get more contextual management advice.${emptyTeamNote}
 
-When you add team members and have conversations about them, I'll be able to provide insights that connect patterns and themes across your entire management network.`;
+When you add team members and have conversations about them, I'll be able to provide insights that connect patterns and themes across your entire team.`;
   }
 
   // Build team overview
