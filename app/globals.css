@@ -20,8 +20,9 @@
   --color-white: #ffffff;
   
   /* Typography system */
-  --font-primary: 'Charter', 'Georgia', 'Times New Roman', serif;
+  --font-primary: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-secondary: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-charter: 'Charter', 'Georgia', 'Times New Roman', serif;
   
   /* Spacing system for typography */
   --space-xs: 0.25rem;   /* 4px */
@@ -54,7 +55,7 @@
 }
 
 body {
-  font-family: var(--font-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 18px;
   line-height: var(--line-height-relaxed);
   color: var(--color-gray-900);
@@ -391,7 +392,7 @@ textarea:focus-visible,
 
 .message-assistant-content {
   flex: 1;
-  font-family: var(--font-primary);
+  font-family: var(--font-charter);
   font-size: 18px;
   font-weight: 400;
   color: var(--color-gray-900);
@@ -400,6 +401,7 @@ textarea:focus-visible,
 
 .message-assistant-content p {
   margin-bottom: var(--space-lg);
+  font-family: var(--font-charter);
 }
 
 .message-assistant-content p:last-child {
