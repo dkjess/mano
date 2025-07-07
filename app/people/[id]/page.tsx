@@ -499,6 +499,30 @@ export default function PersonDetailPage() {
     }
   };
 
+  // Profile completion handlers
+  const handleProfileComplete = (field: string, value: string) => {
+    console.log('Profile field completed:', field, value);
+    setProfilePrompt(null);
+    // The profile update is already handled by the ProfileCompletionPrompt component
+  };
+
+  const handleProfileDismiss = () => {
+    console.log('Profile prompt dismissed');
+    setProfilePrompt(null);
+  };
+
+  // Person suggestion handlers
+  const handlePersonAdded = (newPerson: Person) => {
+    console.log('New person added:', newPerson);
+    setPersonSuggestion(null);
+    // The person is already added through the context
+  };
+
+  const handleDismissSuggestion = () => {
+    console.log('Person suggestion dismissed');
+    setPersonSuggestion(null);
+  };
+
   const handleTypingInput = (e: React.FormEvent<HTMLDivElement>) => {
     setNewMessage(e.currentTarget.textContent || '');
   };
