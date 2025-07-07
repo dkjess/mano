@@ -741,13 +741,6 @@ export default function PersonDetailPage() {
                   />
                 )}
 
-                {personSuggestion && (
-                  <PersonSuggestion
-                    detectedPeople={personSuggestion.detectedPeople}
-                    onPersonAdded={handlePersonAdded}
-                    onDismiss={handleDismissSuggestion}
-                  />
-                )}
 
                 {profilePrompt && person && (
                   <ProfileCompletionPrompt
@@ -943,13 +936,6 @@ export default function PersonDetailPage() {
                   />
                 )}
 
-                {personSuggestion && (
-                  <PersonSuggestion
-                    detectedPeople={personSuggestion.detectedPeople}
-                    onPersonAdded={handlePersonAdded}
-                    onDismiss={handleDismissSuggestion}
-                  />
-                )}
 
                 {profilePrompt && person && (
                   <ProfileCompletionPrompt
