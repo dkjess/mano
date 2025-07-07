@@ -12,6 +12,10 @@ interface StreamingMessage {
 
 export function useStreamingResponse() {
   const [streamingMessage, setStreamingMessage] = useState<StreamingMessage | null>(null);
+  const [intelligenceEvents, setIntelligenceEvents] = useState<{
+    personSuggestions?: any[];
+    profileCompletion?: any;
+  }>({});
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -141,6 +145,18 @@ export function useStreamingResponse() {
                   console.log('🎬 CLIENT DEBUG: Playback starting');
                 } else if (parsed.type === 'start') {
                   console.log('🚀 CLIENT DEBUG: Stream starting');
+                } else if (parsed.type === 'person_suggestions') {
+                  console.log('👥 CLIENT DEBUG: Person suggestions received:', parsed.suggestions);
+                  setIntelligenceEvents(prev => ({
+                    ...prev,
+                    personSuggestions: parsed.suggestions
+                  }));
+                } else if (parsed.type === 'profile_completion') {
+                  console.log('📝 CLIENT DEBUG: Profile completion prompt received:', parsed.prompt);
+                  setIntelligenceEvents(prev => ({
+                    ...prev,
+                    profileCompletion: parsed.prompt
+                  }));
                 } else if (parsed.type === 'complete') {
                   isStreamComplete = true;
                   return;
@@ -232,10 +248,17 @@ export function useStreamingResponse() {
     setStreamingMessage(null);
   }, []);
 
+  const clearIntelligenceEvents = useCallback(() => {
+    console.log('🧠 CLIENT DEBUG: Clearing intelligence events');
+    setIntelligenceEvents({});
+  }, []);
+
   return {
     streamingMessage,
+    intelligenceEvents,
     startStreaming,
     stopStreaming,
-    clearStreamingMessage
+    clearStreamingMessage,
+    clearIntelligenceEvents
   };
 } 

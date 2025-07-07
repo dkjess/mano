@@ -697,6 +697,69 @@ async function handleStreamingChat({
             topic_id: verifyMessage.topic_id
           })
 
+          // ===== SERVER-SIDE INTELLIGENCE =====
+          // Process intelligence for all conversations (both topics and people)
+          console.log('🧠 Starting server-side intelligence processing...')
+          
+          try {
+            // 1. Person Detection - Apply to all conversations
+            console.log('🔍 Running person detection...')
+            const personDetectionResult = await detectNewPeopleWithContext(
+              user.id,
+              message.trim(),
+              fullResponse,
+              isTopicConversation ? actualTopicId : person_id,
+              isTopicConversation ? 'topic' : 'person'
+            )
+            
+            if (personDetectionResult.detectedPeople.length > 0) {
+              console.log('👥 Person detection found new people:', personDetectionResult.detectedPeople.map(p => p.name))
+              
+              // Send person suggestions to client
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'person_suggestions',
+                suggestions: personDetectionResult.detectedPeople
+              })}\n\n`))
+            }
+
+            // 2. Profile Completion - Only for person conversations
+            if (!isTopicConversation && person_id) {
+              console.log('📝 Running profile completion analysis for person:', person_id)
+              
+              // Get person data for profile analysis
+              const { data: personData } = await supabase
+                .from('people')
+                .select('*')
+                .eq('id', person_id)
+                .single()
+              
+              if (personData) {
+                const shouldPrompt = await shouldPromptForCompletion(
+                  user.id,
+                  message.trim(),
+                  fullResponse,
+                  personData
+                )
+                
+                if (shouldPrompt.shouldPrompt) {
+                  console.log('💡 Profile completion prompt needed:', shouldPrompt.reason)
+                  
+                  // Send profile completion prompt to client
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                    type: 'profile_completion',
+                    prompt: shouldPrompt
+                  })}\n\n`))
+                }
+              }
+            }
+            
+            console.log('✅ Server-side intelligence processing completed')
+            
+          } catch (intelligenceError) {
+            console.error('⚠️ Intelligence processing failed (non-critical):', intelligenceError)
+            // Don't let intelligence errors break the main response flow
+          }
+
           // Now stream the saved response back to client for typing effect
           console.log('🎬 Starting playback streaming for typing effect...')
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
