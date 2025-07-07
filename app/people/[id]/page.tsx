@@ -190,12 +190,13 @@ export default function PersonDetailPage() {
           title: `${getRelationshipEmoji(personData.relationship_type)} ${personData.name}`,
           subtitle: getRelationshipLabel(personData.relationship_type),
           rightAction: (
-            <PersonEditMenu
-              person={personData}
-              onEdit={handleOpenProfileForm}
-              onUpdate={handlePersonUpdated}
-              onDelete={handlePersonDeleted}
-            />
+            <button
+              onClick={handleOpenPersonEditMenu}
+              className="text-gray-600 hover:text-gray-900 p-2"
+              aria-label="Edit person"
+            >
+              ⋯
+            </button>
           )
         }}
         features={{
@@ -228,6 +229,7 @@ export default function PersonDetailPage() {
           onEdit={handleOpenProfileForm}
           onUpdate={handlePersonUpdated}
           onDelete={handlePersonDeleted}
+          onClose={handleClosePersonEditMenu}
         />
       )}
     </>
